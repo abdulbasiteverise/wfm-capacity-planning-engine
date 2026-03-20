@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>WFM Capacity Planning Engine™ · Abdul Basit</title>
+<meta name="description" content="Enterprise WFM Capacity Planning Engine — call center FTE forecasting, shrinkage modeling, and 6-month staffing strategy. Used globally across BPO in India, Dubai, Philippines."/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   WFM CAPACITY PLANNING ENGINE™ v3
+   Design: Refined dark SaaS · Linear × Stripe × Vercel DNA
+   Font: DM Sans + DM Mono
+   Accent: Single blue #4F8EF7 · Red=critical · Amber=warn
+═══════════════════════════════════════════════════════════ */
+:root {
+  --bg:         #0c0d10;
+  --surface:    #12141a;
+  --surface2:   #181b23;
+  --surface3:   #1e2230;
+  --border:     rgba(255,255,255,0.065);
+  --border2:    rgba(255,255,255,0.11);
+  --border3:    rgba(255,255,255,0.16);
+
+  --blue:       #4F8EF7;
+  --blue-dim:   rgba(79,142,247,0.10);
+  --blue-mid:   rgba(79,142,247,0.18);
+  --blue-glow:  rgba(79,142,247,0.28);
+  --red:        #F25757;
+  --red-dim:    rgba(242,87,87,0.10);
+  --amber:      #F5A623;
+  --amber-dim:  rgba(245,166,35,0.10);
+  --green:      #3ECF8E;
+  --green-dim:  rgba(62,207,142,0.10);
+
+  --text:       #ECEEF4;
+  --text2:      #8791A5;
+  --text3:      #4C5470;
+
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --mono: 'DM Mono', 'Fira Mono', monospace;
+
+  --r:  12px;
+  --rs:  8px;
+  --rx:  6px;
+  --ease: cubic-bezier(0.4,0,0.2,1);
+  --ease-spring: cubic-bezier(0.34,1.56,0.64,1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* subtle dot-grid */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: radial-gradient(rgba(79,142,247,0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* ─── TOOLTIP SYSTEM ─────────────────────────────────── */
+.tip-wrap { position: relative; display: inline-flex; align-items: center; }
+.tip-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--surface3); border: 1px solid var(--border2);
+  color: var(--text3); font-size: 9px; font-weight: 600;
+  cursor: help; margin-left: 5px; flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  font-style: normal; line-height: 1;
+}
+.tip-icon:hover { background: var(--blue-dim); border-color: var(--blue); color: var(--blue); }
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%; transform: translateX(-50%);
+  background: #1e2332;
+  border: 1px solid var(--border2);
+  border-radius: var(--rs);
+  padding: 9px 13px;
+  min-width: 200px; max-width: 280px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.55;
+  color: var(--text2);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+  white-space: normal; z-index: 9000;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+  transform: translateX(-50%) translateY(4px);
+}
+.tooltip::after {
+  content: ''; position: absolute;
+  top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--border2);
+}
+.tip-wrap:hover .tooltip,
+.tip-wrap:focus-within .tooltip {
+  opacity: 1; visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+/* left-anchored tooltips */
+.tooltip.tip-left { left: 0; transform: translateX(0) translateY(4px); }
+.tooltip.tip-left::after { left: 18px; transform: none; }
+.tip-wrap:hover .tooltip.tip-left { transform: translateX(0) translateY(0); }
+
+/* ─── STICKY KPI ─────────────────────────────────────── */
+.sticky-kpi {
+  position: fixed; top: 60px; left: 0; right: 0; z-index: 150;
+  background: rgba(12,13,16,0.88);
+  backdrop-filter: blur(20px) saturate(160%);
+  border-bottom: 1px solid var(--border2);
+  transform: translateY(-100%);
+  transition: transform 0.3s var(--ease), opacity 0.3s;
+  opacity: 0; pointer-events: none;
+}
+.sticky-kpi.visible { transform: translateY(0); opacity: 1; pointer-events: auto; }
+.sticky-kpi-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 32px;
+  height: 52px; display: flex; align-items: center; gap: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+.sticky-kpi-inner::-webkit-scrollbar { display: none; }
+.skpi-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 20px; height: 52px;
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.skpi-item:first-child { padding-left: 0; }
+.skpi-item:last-child  { border-right: none; }
+.skpi-lbl { font-size: 10px; color: var(--text3); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+.skpi-val { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--text); }
+.skpi-val.s-red   { color: var(--red); }
+.skpi-val.s-green { color: var(--green); }
+.skpi-val.s-amber { color: var(--amber); }
+
+/* ─── HEADER ─────────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 200;
+  background: rgba(12,13,16,0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 32px;
+  height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.logo-group { display: flex; align-items: center; gap: 12px; }
+.logo-chip {
+  background: var(--blue); color: #fff;
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.12em; padding: 4px 9px; border-radius: 6px;
+}
+.logo-name { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
+.logo-by   { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.header-meta { display: flex; align-items: center; gap: 20px; }
+.geo-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--text3); }
+.header-tagline { font-size: 12px; color: var(--text3); }
+
+/* ─── PAGE ───────────────────────────────────────────── */
+.page { max-width: 1200px; margin: 0 auto; padding: 48px 32px 0; position: relative; z-index: 1; }
+@media(max-width:768px){ .page { padding: 32px 16px 0; } }
+
+/* ─── SECTION TITLE ──────────────────────────────────── */
+.sec { margin-bottom: 48px; }
+.sec-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.sec-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--text3);
+  display: flex; align-items: center; gap: 10px;
+}
+.sec-title::after { content: ''; flex: 1; min-width: 32px; height: 1px; background: var(--border); }
+.sec-right { font-size: 11px; color: var(--text3); flex-shrink: 0; }
+
+/* ─── INPUT PANEL ────────────────────────────────────── */
+.input-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 32px; margin-bottom: 48px;
+}
+.input-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; gap: 16px; }
+.input-title { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+.input-hint  { font-size: 12px; color: var(--text2); margin-top: 4px; max-width: 480px; }
+.sample-pill {
+  font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.08em;
+  color: var(--blue); background: var(--blue-dim);
+  border: 1px solid rgba(79,142,247,0.22); padding: 5px 12px;
+  border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+}
+
+.input-grid {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px;
+}
+@media(max-width:900px){ .input-grid{ grid-template-columns: repeat(3,1fr); } }
+@media(max-width:620px){ .input-grid{ grid-template-columns: repeat(2,1fr); } }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.04em;
+  color: var(--text2); text-transform: uppercase;
+  display: flex; align-items: center;
+}
+.field input {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--rs); color: var(--text);
+  font-family: var(--mono); font-size: 14px; padding: 10px 13px;
+  outline: none; width: 100%;
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+  -webkit-appearance: none; appearance: none;
+}
+.field input:hover  { border-color: var(--border2); }
+.field input:focus  { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+.field input::placeholder { color: var(--text3); }
+.ramp-pair { display: flex; gap: 8px; }
+.ramp-pair input { flex: 1; }
+
+.input-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--blue); color: #fff; border: none;
+  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  padding: 11px 26px; border-radius: var(--rs); cursor: pointer;
+  box-shadow: 0 1px 3px rgba(79,142,247,0.3), 0 4px 16px rgba(79,142,247,0.15);
+  transition: background 0.18s, transform 0.15s var(--ease), box-shadow 0.18s;
+}
+.btn-primary:hover  { background: #3d7ef0; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(79,142,247,0.35); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+.btn-ghost {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text2); font-family: var(--sans); font-size: 13px; font-weight: 500;
+  padding: 11px 18px; border-radius: var(--rs); cursor: pointer;
+  transition: border-color 0.18s, color 0.18s, background 0.18s;
+}
+.btn-ghost:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+
+/* ─── EMPTY STATE ────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 96px 32px; text-align: center;
+}
+.empty-icon {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: var(--surface2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+.empty-icon svg { width: 24px; height: 24px; color: var(--text3); }
+.empty-title { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); margin-bottom: 8px; }
+.empty-sub   { font-size: 14px; color: var(--text2); max-width: 320px; line-height: 1.6; }
+
+/* ─── SCENARIO TOGGLE ────────────────────────────────── */
+.scenario-toggle { display: flex; align-items: center; gap: 6px; }
+.stog-btn {
+  font-family: var(--sans); font-size: 12px; font-weight: 500;
+  padding: 5px 14px; border-radius: 20px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text2); transition: all 0.18s var(--ease);
+}
+.stog-btn:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+.stog-btn.active {
+  background: var(--blue-dim); border-color: rgba(79,142,247,0.4);
+  color: var(--blue);
+}
+
+/* ─── EXEC CARDS ─────────────────────────────────────── */
+.exec-row {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 12px;
+}
+@media(max-width:720px){ .exec-row { grid-template-columns: 1fr; } }
+
+.exec-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 22px 24px;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s;
+}
+.exec-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.exec-card.is-risk { border-color: rgba(242,87,87,0.25); background: linear-gradient(135deg,rgba(242,87,87,0.05),var(--surface)); }
+.ec-eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+.ec-value { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.55; }
+.exec-card.is-risk .ec-value { color: var(--red); }
+
+/* ─── KPI STRIP ──────────────────────────────────────── */
+.kpi-strip {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 12px;
+}
+@media(max-width:900px){ .kpi-strip { grid-template-columns: repeat(2,1fr); } }
+@media(max-width:500px){ .kpi-strip { grid-template-columns: 1fr 1fr; } }
+
+.kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 20px 17px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s;
+  cursor: default;
+}
+.kpi:hover { transform: translateY(-3px) scale(1.015); box-shadow: 0 12px 40px rgba(0,0,0,0.45); border-color: var(--border2); }
+.kpi::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--blue);
+}
+.kpi.kpi-red::before   { background: var(--red); }
+.kpi.kpi-green::before { background: var(--green); }
+.kpi.kpi-amber::before { background: var(--amber); }
+
+.kpi-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 10px;
+  display: flex; align-items: center;
+}
+.kpi-number {
+  font-family: var(--mono); font-size: 30px; font-weight: 500;
+  letter-spacing: -0.02em; color: var(--text); line-height: 1;
+  margin-bottom: 5px;
+}
+.kpi.kpi-red   .kpi-number { color: var(--red); }
+.kpi.kpi-green .kpi-number { color: var(--green); }
+.kpi.kpi-amber .kpi-number { color: var(--amber); }
+.kpi-meta    { font-size: 11px; color: var(--text3); margin-bottom: 9px; }
+.kpi-formula {
+  font-family: var(--mono); font-size: 10px; color: var(--text3);
+  background: var(--surface3); border-radius: var(--rx);
+  padding: 5px 9px; line-height: 1.4; border: 1px solid var(--border);
+}
+
+/* ─── HEALTH BARS ────────────────────────────────────── */
+.health-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 24px 28px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+}
+@media(max-width:600px){ .health-panel { grid-template-columns:1fr; } }
+
+.health-top {
+  display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;
+}
+.health-name { font-size: 12px; font-weight: 500; color: var(--text2); display: flex; align-items: center; }
+.health-val  { font-family: var(--mono); font-size: 20px; font-weight: 500; }
+.health-track {
+  height: 5px; background: var(--surface3); border-radius: 99px;
+  overflow: hidden; border: 1px solid var(--border);
+}
+.health-fill { height: 100%; border-radius: 99px; transition: width 1s var(--ease); }
+.fill-blue  { background: linear-gradient(90deg, #4F8EF7, #7AB3FA); }
+.fill-green { background: linear-gradient(90deg, var(--green), #6DDEA8); }
+.fill-amber { background: linear-gradient(90deg, var(--amber), #F7C94B); }
+.fill-red   { background: linear-gradient(90deg, var(--red), #F87979); }
+.health-status { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 7px; }
+
+/* ─── CHARTS ─────────────────────────────────────────── */
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media(max-width:680px){ .charts-row { grid-template-columns: 1fr; } }
+
+.chart-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 22px 24px;
+}
+.chart-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.chart-sub   { font-size: 11px; color: var(--text3); margin-bottom: 20px; }
+.chart-canvas-wrap { position: relative; height: 180px; }
+canvas { width: 100% !important; }
+
+/* ─── TABLE ──────────────────────────────────────────── */
+.table-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); overflow: hidden;
+}
+.table-head-row {
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.table-head-title { font-size: 14px; font-weight: 600; }
+.table-head-sub   { font-size: 12px; color: var(--text3); }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead tr { background: var(--surface2); }
+th {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text3);
+  padding: 12px 20px; text-align: right;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+th:first-child { text-align: left; }
+td {
+  font-family: var(--mono); font-size: 13px;
+  padding: 13px 20px; text-align: right;
+  color: var(--text2); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td:first-child { text-align: left; font-family: var(--sans); font-size: 13px; font-weight: 500; color: var(--text); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr { transition: background 0.15s; }
+tbody tr:hover { background: var(--surface2); }
+.td-neg  { color: var(--red)   !important; font-weight: 500; }
+.td-pos  { color: var(--green) !important; font-weight: 500; }
+.td-warn { color: var(--amber) !important; }
+.td-bad  { color: var(--red)   !important; }
+.td-dim  { color: var(--text3) !important; }
+
+/* ─── SCENARIOS ──────────────────────────────────────── */
+.sc-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+@media(max-width:660px){ .sc-grid { grid-template-columns: 1fr; } }
+.sc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 22px;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s;
+}
+.sc-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,0.35); }
+.sc-card.sc-active { border-color: rgba(79,142,247,0.35); background: linear-gradient(135deg, rgba(79,142,247,0.04), var(--surface)); }
+.sc-tag { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+.sc-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.sc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sc-val { font-family: var(--mono); font-size: 18px; font-weight: 500; color: var(--text); line-height: 1; }
+.sc-lbl { font-size: 10px; color: var(--text3); margin-top: 3px; }
+.sc-gap-pos { color: var(--red)   !important; }
+.sc-gap-neg { color: var(--green) !important; }
+
+/* ─── RISKS ──────────────────────────────────────────── */
+.risks { display: flex; flex-direction: column; gap: 8px; }
+.risk-row {
+  display: flex; align-items: flex-start; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--border2);
+  border-radius: var(--rs); padding: 14px 18px;
+  transition: transform 0.18s var(--ease);
+}
+.risk-row:hover { transform: translateX(3px); }
+.risk-row.r-high   { border-left-color: var(--red); }
+.risk-row.r-medium { border-left-color: var(--amber); }
+.risk-row.r-low    { border-left-color: var(--text3); }
+.risk-badge {
+  font-family: var(--mono); font-size: 9px; font-weight: 500; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 3px 8px; border-radius: 4px;
+  flex-shrink: 0; min-width: 52px; text-align: center; margin-top: 1px;
+}
+.badge-high   { background: var(--red-dim);   color: var(--red);   }
+.badge-medium { background: var(--amber-dim); color: var(--amber); }
+.badge-low    { background: var(--surface3);  color: var(--text3); }
+.risk-body .risk-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.risk-body .risk-desc  { font-size: 12px; color: var(--text2); line-height: 1.55; }
+
+/* ─── COPILOT ────────────────────────────────────────── */
+.copilot-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+@media(max-width:720px){ .copilot-grid { grid-template-columns: repeat(2,1fr); } }
+@media(max-width:480px){ .copilot-grid { grid-template-columns: 1fr; } }
+
+.cop-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 20px 18px;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s;
+}
+.cop-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,0.35); border-color: var(--border2); }
+.cop-n     { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-bottom: 7px; }
+.cop-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 7px; line-height: 1.35; }
+.cop-body  { font-size: 12px; color: var(--text2); line-height: 1.6; }
+
+/* ─── FORMULAS ───────────────────────────────────────── */
+.formula-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+@media(max-width:880px){ .formula-grid { grid-template-columns: 1fr 1fr; } }
+@media(max-width:560px){ .formula-grid { grid-template-columns: 1fr; } }
+
+.formula-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 20px 20px 18px;
+  transition: border-color 0.2s;
+}
+.formula-card:hover { border-color: var(--border2); }
+.formula-q  { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 9px; line-height: 1.4; }
+.formula-eq {
+  font-family: var(--mono); font-size: 11px; color: var(--blue);
+  background: var(--blue-dim); border-radius: var(--rx);
+  padding: 7px 10px; margin-bottom: 9px; line-height: 1.5;
+}
+.formula-ans { font-size: 11px; color: var(--text2); line-height: 1.65; }
+
+/* ─── INSIGHTS ───────────────────────────────────────── */
+.insights { display: flex; flex-direction: column; gap: 10px; }
+.insight-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 22px 24px;
+  transition: border-color 0.2s;
+}
+.insight-card:hover { border-color: var(--border2); }
+.ins-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.ins-body  { font-size: 12px; color: var(--text2); line-height: 1.65; margin-bottom: 10px; }
+.ins-quote {
+  font-family: var(--mono); font-size: 11px; color: var(--blue);
+  background: var(--blue-dim); border-left: 2px solid var(--blue);
+  padding: 8px 12px; border-radius: 0 var(--rx) var(--rx) 0; line-height: 1.5;
+}
+
+/* ─── WFM INTELLIGENCE SUITE ─────────────────────────── */
+.suite-section { margin-bottom: 0; }
+.suite-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+@media(max-width:900px){ .suite-grid { grid-template-columns: 1fr 1fr; } }
+@media(max-width:560px){ .suite-grid { grid-template-columns: 1fr; } }
+
+.suite-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 22px 22px 18px;
+  display: flex; flex-direction: column;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s;
+  text-decoration: none; color: inherit;
+}
+.suite-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); border-color: rgba(79,142,247,0.3); }
+.suite-num  { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-bottom: 8px; }
+.suite-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; line-height: 1.35; }
+.suite-desc { font-size: 12px; color: var(--text2); line-height: 1.6; flex: 1; margin-bottom: 16px; }
+.suite-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--blue);
+  transition: gap 0.18s var(--ease);
+}
+.suite-card:hover .suite-link { gap: 9px; }
+.suite-link svg { width: 12px; height: 12px; }
+
+/* ─── SEO NOTE ───────────────────────────────────────── */
+.seo-note {
+  border: 1px dashed rgba(255,255,255,0.04);
+  background: var(--surface); border-radius: var(--r);
+  padding: 18px 22px; margin-top: 48px; margin-bottom: 32px;
+}
+.seo-note p { font-family: var(--mono); font-size: 10px; color: var(--text3); line-height: 1.8; }
+
+/* ─── FOOTER ─────────────────────────────────────────── */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 24px 32px;
+  max-width: 1200px; margin: 0 auto;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; color: var(--text3); flex-wrap: wrap; gap: 8px;
+  position: relative; z-index: 1;
+}
+.footer-divider { height: 1px; background: var(--border); }
+
+/* ─── HIDDEN / ANIMATION ─────────────────────────────── */
+.hidden { display: none !important; }
+.output { animation: fadeUp 0.35s var(--ease) both; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.10s; }
+.stagger-3 { animation-delay: 0.15s; }
+
+/* scrollbar */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--surface3); border-radius:3px; }
+</style>
+</head>
+<body>
+
+<!-- ══ STICKY KPI BAR (populated by JS) ══════════════════════════════ -->
+<div class="sticky-kpi" id="stickyKpi">
+  <div class="sticky-kpi-inner" id="stickyKpiInner"></div>
+</div>
+
+<!-- ══ HEADER ════════════════════════════════════════════════════════ -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo-group">
+      <span class="logo-chip">WFM</span>
+      <div>
+        <div class="logo-name">Capacity Planning Engine™</div>
+        <div class="logo-by">Abdul Basit · WFM Lead & Capacity Planning Specialist</div>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span class="header-tagline">Turning Volume into Workforce Strategy</span>
+      <span class="geo-tag">IN · UAE · PH · GLOBAL</span>
+    </div>
+  </div>
+</header>
+
+<!-- ══ PAGE ══════════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- INPUT PANEL -->
+  <div class="input-panel" id="inputPanel">
+    <div class="input-header">
+      <div>
+        <div class="input-title">Scenario Inputs</div>
+        <div class="input-hint">Enter workforce parameters — engine computes FTE, gap, occupancy &amp; 6-month plan.</div>
+      </div>
+      <span class="sample-pill">Sample data loaded</span>
+    </div>
+
+    <div class="input-grid">
+      <div class="field">
+        <label class="field-label">
+          Monthly Volume
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip tip-left">Total inbound calls (or contacts) expected in the month. The primary driver of all FTE calculations.</span></span>
+        </label>
+        <input type="number" id="volume" value="55000" placeholder="55000"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          AHT (seconds)
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip tip-left">Average Handle Time — total call duration including wrap-up. Used to convert call volume into labour-hours.</span></span>
+        </label>
+        <input type="number" id="aht" value="300" placeholder="300"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Shrinkage %
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">% of paid time agents are unavailable: breaks, training, absence, meetings. Increases required FTE.</span></span>
+        </label>
+        <input type="number" id="shrinkage" value="30" placeholder="30"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Paid Hours / Month
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">Total contracted hours per agent per month (e.g. 160h = 8h × 20 days). Base for productive hour calculation.</span></span>
+        </label>
+        <input type="number" id="paidHours" value="160" placeholder="160"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Buffer %
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">Capacity cushion added above mathematical minimum FTE to absorb forecast error and volume spikes. BPO standard: 25–35%.</span></span>
+        </label>
+        <input type="number" id="buffer" value="30" placeholder="30"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Current HC</label>
+        <input type="number" id="currentHC" value="65" placeholder="65"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Monthly Attrition %
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">% of headcount lost each month through resignation/termination. At 5%/month you lose 60%/year. Compounded in the 6-month plan.</span></span>
+        </label>
+        <input type="number" id="attrition" value="5" placeholder="5"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Lead Time (months)
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">Time from requisition to hire's first day. Determines how far ahead to initiate recruitment to close a gap.</span></span>
+        </label>
+        <input type="number" id="leadTime" value="2" placeholder="2"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Cost per FTE / Month</label>
+        <input type="number" id="costFTE" value="50000" placeholder="50000"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          AI Deflection %
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">% of contacts deflected by AI/chatbot before reaching agents. &gt;20% triggers a +15% AHT adjustment for complex residual calls.</span></span>
+        </label>
+        <input type="number" id="aiDeflection" value="0" placeholder="0"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Ramp M1 %
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">New hire productivity in their first month. Typically 40–60%. Affects Ramp-Adjusted Effective HC.</span></span>
+        </label>
+        <input type="number" id="ramp1" value="50" placeholder="50"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Ramp M2 % · M3+ %</label>
+        <div class="ramp-pair">
+          <input type="number" id="ramp2" value="70" placeholder="70"/>
+          <input type="number" id="ramp3" value="100" placeholder="100"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-actions">
+      <button class="btn-primary" onclick="runEngine()">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5L12 8L5 12.5V3.5Z"/></svg>
+        Run Capacity Engine
+      </button>
+      <button class="btn-ghost" onclick="resetInputs()">Reset</button>
+    </div>
+  </div>
+
+  <!-- EMPTY STATE -->
+  <div id="emptyState" class="empty-state">
+    <div class="empty-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+    </div>
+    <div class="empty-title">Run a Scenario</div>
+    <div class="empty-sub">Enter your workforce parameters above and click Run to generate your capacity plan.</div>
+  </div>
+
+  <!-- OUTPUT (hidden until engine runs) -->
+  <div id="outputArea" class="hidden">
+
+    <!-- EXECUTIVE SUMMARY -->
+    <div class="sec output stagger-1">
+      <div class="sec-header"><div class="sec-title">Executive Summary</div></div>
+      <div class="exec-row">
+        <div class="exec-card" id="execPosition"></div>
+        <div class="exec-card is-risk" id="execRisk"></div>
+        <div class="exec-card" id="execMandate"></div>
+      </div>
+    </div>
+
+    <!-- KPI STRIP -->
+    <div class="sec output stagger-2" id="kpiSection">
+      <div class="sec-header">
+        <div class="sec-title">KPI Dashboard</div>
+        <div class="scenario-toggle">
+          <button class="stog-btn active" data-mult="1.0" onclick="setScenarioMult(1.0,this)">Base</button>
+          <button class="stog-btn" data-mult="1.1" onclick="setScenarioMult(1.1,this)">+10% Vol</button>
+          <button class="stog-btn" data-mult="0.9" onclick="setScenarioMult(0.9,this)">−10% Vol</button>
+        </div>
+      </div>
+      <div class="kpi-strip" id="kpiGrid"></div>
+    </div>
+
+    <!-- HEALTH BARS -->
+    <div class="sec output stagger-2">
+      <div class="sec-header"><div class="sec-title">Staffing Health</div></div>
+      <div class="health-panel" id="statusBar"></div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="sec output stagger-3">
+      <div class="sec-header"><div class="sec-title">Capacity Trend</div></div>
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-title">Required FTE — 6 Months</div>
+          <div class="chart-sub">Workforce requirement vs effective headcount</div>
+          <div class="chart-canvas-wrap"><canvas id="fteChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Staffing Gap — 6 Months</div>
+          <div class="chart-sub">Deficit (red) / Surplus (green) per month</div>
+          <div class="chart-canvas-wrap"><canvas id="gapChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6-MONTH TABLE -->
+    <div class="sec output stagger-2">
+      <div class="sec-header">
+        <div class="sec-title">6-Month Capacity Plan</div>
+        <div class="sec-right">Attrition + ramp-adjusted</div>
+      </div>
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Month</th><th>Volume</th><th>Req. FTE</th>
+                <th>Attrition</th><th>Eff. HC</th><th>Occupancy</th>
+                <th>Gap</th><th>Hire</th>
+              </tr>
+            </thead>
+            <tbody id="capacityBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENARIO ANALYSIS -->
+    <div class="sec output">
+      <div class="sec-header"><div class="sec-title">Scenario Analysis</div></div>
+      <div class="sc-grid" id="scenarioGrid"></div>
+    </div>
+
+    <!-- RISK FLAGS -->
+    <div class="sec output">
+      <div class="sec-header"><div class="sec-title">Risk Flags</div></div>
+      <div class="risks" id="intelligenceLayer"></div>
+    </div>
+
+    <!-- COPILOT -->
+    <div class="sec output">
+      <div class="sec-header"><div class="sec-title">AI Copilot — Actions</div></div>
+      <div id="copilotActions"></div>
+    </div>
+
+    <!-- FORMULAS -->
+    <div class="sec output">
+      <div class="sec-header"><div class="sec-title">How the Model Works</div></div>
+      <div class="formula-grid" id="formulaGrid"></div>
+    </div>
+
+    <!-- INSIGHTS -->
+    <div class="sec output">
+      <div class="sec-header"><div class="sec-title">Expert Insights</div></div>
+      <div class="insights" id="expertInsights"></div>
+    </div>
+
+  </div><!-- /outputArea -->
+
+  <!-- WFM INTELLIGENCE SUITE (always visible) -->
+  <div class="suite-section sec" style="margin-top:64px;">
+    <div class="sec-header"><div class="sec-title">WFM Intelligence Suite</div></div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:24px;max-width:560px;">Advanced tools for forecasting, planning, and real-time optimization. Built for WFM professionals across global BPO operations.</p>
+    <div class="suite-grid">
+      <a class="suite-card" href="https://abdulbasiteverise.github.io/abire-forecast-validator/" target="_blank" rel="noopener">
+        <div class="suite-num">01</div>
+        <div class="suite-name">Forecast Validator</div>
+        <div class="suite-desc">Validate forecast accuracy against actuals. Identify bias, MAPE, and variance patterns across intervals.</div>
+        <div class="suite-link">Open Tool <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 6h8M6 2l4 4-4 4"/></svg></div>
+      </a>
+      <a class="suite-card" href="https://abdulbasiteverise.github.io/wfm-intelligence-engine/" target="_blank" rel="noopener">
+        <div class="suite-num">02</div>
+        <div class="suite-name">WFM Intelligence Engine</div>
+        <div class="suite-desc">Full-spectrum workforce intelligence: scheduling efficiency, SLA modeling, and staffing recommendations.</div>
+        <div class="suite-link">Open Tool <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 6h8M6 2l4 4-4 4"/></svg></div>
+      </a>
+      <a class="suite-card" href="https://abdulbasiteverise.github.io/Intraday-Variance-analysis/" target="_blank" rel="noopener">
+        <div class="suite-num">03</div>
+        <div class="suite-name">Intraday Variance Analysis</div>
+        <div class="suite-desc">Analyze real-time staffing variance against plan. Identify over/understaffed intervals across the day.</div>
+        <div class="suite-link">Open Tool <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 6h8M6 2l4 4-4 4"/></svg></div>
+      </a>
+      <a class="suite-card" href="https://abdulbasiteverise.github.io/Forecast-Smoothing/" target="_blank" rel="noopener">
+        <div class="suite-num">04</div>
+        <div class="suite-name">Forecast Smoothing</div>
+        <div class="suite-desc">Apply exponential and weighted smoothing to raw forecasts. Reduce noise and improve interval accuracy.</div>
+        <div class="suite-link">Open Tool <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 6h8M6 2l4 4-4 4"/></svg></div>
+      </a>
+      <a class="suite-card" href="https://abdulbasiteverise.github.io/bwie-wfm-simulator/" target="_blank" rel="noopener">
+        <div class="suite-num">05</div>
+        <div class="suite-name">Erlang Simulator</div>
+        <div class="suite-desc">Erlang C/A simulation for SLA, ASA, and agent requirement modeling. Industry-standard queue modeling.</div>
+        <div class="suite-link">Open Tool <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 6h8M6 2l4 4-4 4"/></svg></div>
+      </a>
+      <a class="suite-card" href="https://abdulbasiteverise.github.io/wfm-multi-queue-allocation-simulator/" target="_blank" rel="noopener">
+        <div class="suite-num">06</div>
+        <div class="suite-name">Multi-Queue Allocation</div>
+        <div class="suite-desc">Optimize agent allocation across multiple queues and skills. Minimize total staffing cost while meeting SLA.</div>
+        <div class="suite-link">Open Tool <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 6h8M6 2l4 4-4 4"/></svg></div>
+      </a>
+    </div>
+  </div>
+
+  <!-- SEO NOTE -->
+  <div class="seo-note">
+    <p>This model reflects real-world workforce management practices used across enterprise contact centers globally. WFM Capacity Planning Engine™ applies Erlang-Equivalent Demand logic and shrinkage-adjusted FTE modeling — standard in BPO operations across India, Dubai, Philippines, and Fortune 500 contact centers. Keywords: workforce management capacity planning · call center forecasting · contact center staffing model · long-term capacity planning BPO · how to calculate FTE in call center · call center staffing formula explained · WFM scheduling optimization · Erlang staffing model.</p>
+  </div>
+
+</div><!-- /page -->
+
+<div class="footer-divider"></div>
+<footer class="footer">
+  <span>WFM Capacity Planning Engine™ · Built by Abdul Basit · WFM Lead &amp; Capacity Planning Specialist</span>
+  <span>Workforce Management · Forecasting · Scheduling · Global BPO</span>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     SCRIPT — Logic unchanged. New: tooltips, sticky KPI, scenario
+     toggle, charts (pure canvas, zero dependencies).
+═══════════════════════════════════════════════════════════════════ -->
+<script>
+"use strict";
+
+/* ── UTILS ──────────────────────────────────────────────────────── */
+const fmt    = (n,d=0)  => Number(n).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtPct = (n,d=1)  => fmt(n,d)+'%';
+const fmtK   = n => n>=100000?'₹'+fmt(n/100000,2)+'L':n>=1000?fmt(n/1000,1)+'K':fmt(n,0);
+const clamp  = (n,a,b)  => Math.max(a,Math.min(b,n));
+const MONTHS = ['Month 1','Month 2','Month 3','Month 4','Month 5','Month 6'];
+
+/* ── GLOBAL STATE ───────────────────────────────────────────────── */
+let _lastInp = null;
+let _scenarioMult = 1.0;
+let _fteChartCtx = null, _gapChartCtx = null;
+
+/* ── READ INPUTS ────────────────────────────────────────────────── */
+function readInputs(){
+  return {
+    volume:       +document.getElementById('volume').value      ||55000,
+    aht:          +document.getElementById('aht').value         ||300,
+    shrinkage:    +document.getElementById('shrinkage').value    ||30,
+    paidHours:    +document.getElementById('paidHours').value    ||160,
+    buffer:       +document.getElementById('buffer').value       ||30,
+    currentHC:    +document.getElementById('currentHC').value    ||65,
+    attrition:    +document.getElementById('attrition').value    ||5,
+    leadTime:     +document.getElementById('leadTime').value     ||2,
+    costFTE:      +document.getElementById('costFTE').value      ||50000,
+    aiDeflection: +document.getElementById('aiDeflection').value ||0,
+    ramp1:        +document.getElementById('ramp1').value        ||50,
+    ramp2:        +document.getElementById('ramp2').value        ||70,
+    ramp3:        +document.getElementById('ramp3').value        ||100,
+  };
+}
+
+/* ── CORE ENGINE (logic unchanged) ─────────────────────────────── */
+function calcBase(vol,aht,shrinkage,paidHours,buffer,aiDeflection){
+  const adjAHT = aiDeflection>20 ? aht*1.15 : aht;
+  const workload = (vol*adjAHT)/3600;
+  const productiveHours = paidHours*(1-shrinkage/100);
+  const rawFTE = workload/productiveHours;
+  const reqFTE = rawFTE*(1+buffer/100);
+  return {workload,productiveHours,rawFTE,reqFTE,adjAHT};
+}
+function rampAdjust(newHires,offset,r1,r2,r3){
+  if(offset<0) return 0;
+  if(offset===0) return newHires*(r1/100);
+  if(offset===1) return newHires*(r2/100);
+  return newHires*(r3/100);
+}
+function buildMonthlyPlan(inp){
+  const plan=[]; let currentHC=inp.currentHC; const hh=[];
+  for(let m=0;m<6;m++){
+    const vol=inp.volume*_scenarioMult;
+    const {workload,reqFTE}=calcBase(vol,inp.aht,inp.shrinkage,inp.paidHours,inp.buffer,inp.aiDeflection);
+    const attritionLoss=Math.round(currentHC*(inp.attrition/100));
+    let tenuredHC=Math.max(0,currentHC-attritionLoss);
+    let rampContrib=0;
+    for(const h of hh) rampContrib+=rampAdjust(h.count,m-h.month,inp.ramp1,inp.ramp2,inp.ramp3);
+    const effectiveHC=tenuredHC+rampContrib;
+    const occupancy=effectiveHC>0?(workload/(effectiveHC*inp.paidHours))*100:999;
+    const gap=Math.ceil(reqFTE)-Math.round(effectiveHC);
+    const hiring=Math.max(0,gap>0?gap:0);
+    plan.push({month:m,volume:vol,workload,reqFTE:Math.ceil(reqFTE),attritionLoss,
+      effectiveHC:Math.round(effectiveHC),occupancy,gap,hiring,tenuredHC:Math.round(tenuredHC)});
+    if(hiring>0) hh.push({month:m,count:hiring});
+    currentHC=Math.max(0,tenuredHC)+hiring;
+  }
+  return plan;
+}
+
+/* ── MAIN RUN ───────────────────────────────────────────────────── */
+function runEngine(){
+  _lastInp = readInputs();
+  _renderAll(_lastInp);
+  document.getElementById('emptyState').classList.add('hidden');
+  const out = document.getElementById('outputArea');
+  out.classList.remove('hidden');
+  out.scrollIntoView({behavior:'smooth',block:'start'});
+  initStickyKpi();
+}
+
+function _renderAll(inp){
+  const vol = inp.volume * _scenarioMult;
+  const inpAdj = {...inp, volume: vol};
+  const {workload,productiveHours,reqFTE,adjAHT} = calcBase(vol,inp.aht,inp.shrinkage,inp.paidHours,inp.buffer,inp.aiDeflection);
+  const eff0 = inp.currentHC;
+  const occ0 = eff0>0?(workload/(eff0*inp.paidHours))*100:0;
+  const gap0 = Math.ceil(reqFTE)-eff0;
+  const plan = buildMonthlyPlan(inp);
+
+  renderExec(inp,reqFTE,eff0,gap0,occ0);
+  renderKPIs(inp,workload,productiveHours,reqFTE,eff0,gap0,occ0,adjAHT);
+  renderStatusBar(gap0,reqFTE,eff0,occ0);
+  renderTable(plan);
+  renderScenarios(inp,workload,reqFTE);
+  renderIntelligence(inp,gap0,occ0,reqFTE,eff0,plan);
+  renderCopilot(inp,gap0,occ0,reqFTE);
+  renderFormulas(inp,workload,productiveHours,reqFTE,adjAHT);
+  renderInsights(inp,gap0,occ0,reqFTE,workload,productiveHours);
+  renderCharts(plan);
+  updateStickyKpi(gap0,reqFTE,eff0,occ0,workload,fmtK(eff0*inp.costFTE));
+}
+
+/* ── SCENARIO TOGGLE ────────────────────────────────────────────── */
+function setScenarioMult(mult,btn){
+  _scenarioMult = mult;
+  document.querySelectorAll('.stog-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(_lastInp) _renderAll(_lastInp);
+}
+
+/* ── STICKY KPI ─────────────────────────────────────────────────── */
+let _stickyInited = false;
+function initStickyKpi(){
+  if(_stickyInited) return;
+  _stickyInited = true;
+  const kpiSection = document.getElementById('kpiSection');
+  const stickyEl   = document.getElementById('stickyKpi');
+  const obs = new IntersectionObserver(([e])=>{
+    stickyEl.classList.toggle('visible', !e.isIntersecting && e.boundingClientRect.top < 0);
+  },{threshold:0, rootMargin:'-60px 0px 0px 0px'});
+  obs.observe(kpiSection);
+}
+function updateStickyKpi(gap,reqFTE,effHC,occ,workload,cost){
+  const items=[
+    {lbl:'Workload',     val:fmt(workload,0)+' hrs', cls:''},
+    {lbl:'Req. FTE',     val:Math.ceil(reqFTE),      cls:''},
+    {lbl:'Eff. HC',      val:effHC,                  cls:''},
+    {lbl:'Gap',          val:(gap>0?'+':'')+Math.round(gap), cls:gap>0?'s-red':'s-green'},
+    {lbl:'Occupancy',    val:fmtPct(occ),             cls:occ>85?'s-red':occ>70?'s-amber':'s-green'},
+    {lbl:'Monthly Cost', val:cost,                    cls:''},
+  ];
+  document.getElementById('stickyKpiInner').innerHTML=items.map(it=>`
+    <div class="skpi-item">
+      <span class="skpi-lbl">${it.lbl}</span>
+      <span class="skpi-val ${it.cls}">${it.val}</span>
+    </div>`).join('');
+}
+
+/* ── EXECUTIVE SUMMARY ──────────────────────────────────────────── */
+function renderExec(inp,reqFTE,eff,gap,occ){
+  const abs=Math.abs(Math.round(gap));
+  const pos=gap<0?`Capacity Surplus: ${abs} FTE above requirement. Review cost efficiency.`
+                 :`Capacity Deficit: ${abs} FTE below requirement. Immediate action needed.`;
+  const risk=occ>90?`CRITICAL — Occupancy at ${fmtPct(occ)}. SLA breach imminent.`
+    :occ>80?`HIGH — Occupancy ${fmtPct(occ)}. Hire within 30 days.`
+    :occ>70?`MODERATE — Occupancy ${fmtPct(occ)}. Monitor attrition.`
+    :`HEALTHY — Occupancy ${fmtPct(occ)}. Plan for growth.`;
+  const mandate=gap>0?`Recruit ${Math.ceil(gap)} FTEs now. Account for ${inp.leadTime}-mo lead time + ramp.`
+    :`Optimize capacity. Consider cross-training or flex scheduling.`;
+  const set=(id,eye,val)=>{
+    document.getElementById(id).innerHTML=`<div class="ec-eyebrow">${eye}</div><div class="ec-value">${val}</div>`;
+  };
+  set('execPosition','Staffing Position',pos);
+  set('execRisk','Primary Risk',risk);
+  set('execMandate','Strategic Mandate',mandate);
+}
+
+/* ── KPI DASHBOARD ──────────────────────────────────────────────── */
+const KPI_TIPS = {
+  'Workload':        'Total handle-time demand in hours. Formula: (Volume × AHT) ÷ 3600.',
+  'Required FTE':    'FTE needed including buffer & shrinkage. Formula: (Workload ÷ Prod.Hrs) × (1 + Buffer%).',
+  'Effective HC':    'Ramp-adjusted headcount actually available for calls right now.',
+  'Capacity Gap':    'Required FTE minus Effective HC. Positive = deficit (hire). Negative = surplus (optimize).',
+  'Occupancy':       'Workload ÷ (HC × Paid Hours) × 100. Safe band: 75–85%. Above 85% = burnout risk.',
+  'Prod. Hours':     'Paid Hours × (1 − Shrinkage%). Hours an agent is actually available to take calls.',
+  'Shrinkage':       'Non-productive paid time per agent. Breaks + absence + training. Raises required FTE.',
+  'Monthly Cost':    'Effective HC × Cost per FTE. Total payroll for current headcount.',
+};
+
+function renderKPIs(inp,workload,productiveHours,reqFTE,effHC,gap,occ,adjAHT){
+  const kpis=[
+    {label:'Workload',      value:fmt(workload,0)+' hrs', meta:'Erlang-Equivalent Demand',      formula:`(${fmt(inp.volume*_scenarioMult,0)} × ${adjAHT}s) ÷ 3600`, cls:''},
+    {label:'Required FTE',  value:Math.ceil(reqFTE),      meta:'With buffer & shrinkage',        formula:`(WL÷${fmt(productiveHours,1)}h)×${1+inp.buffer/100}`, cls:''},
+    {label:'Effective HC',  value:effHC,                  meta:'Ramp-adjusted capacity',         formula:`Current HC: ${inp.currentHC} agents`, cls:''},
+    {label:'Capacity Gap',  value:(gap>0?'+':'')+Math.round(gap)+' FTE', meta:gap>0?'Deficit — hire now':'Surplus — optimize',
+     formula:`Req ${Math.ceil(reqFTE)} − Eff ${effHC}`, cls:gap>0?'kpi-red':'kpi-green'},
+    {label:'Occupancy',     value:fmtPct(occ), meta:occ>85?'Risk Band: HIGH':'Risk Band: NORMAL',
+     formula:`WL÷(HC×PaidHrs)×100`, cls:occ>90?'kpi-red':occ>80?'kpi-amber':'kpi-green'},
+    {label:'Prod. Hours',   value:fmt(productiveHours,1), meta:'Per agent per month', formula:`${inp.paidHours}h×(1−${inp.shrinkage}%)`, cls:''},
+    {label:'Shrinkage',     value:fmt(inp.paidHours*(inp.shrinkage/100),1)+' hrs', meta:'Lost per agent/month', formula:`${inp.paidHours}h×${inp.shrinkage}%`, cls:''},
+    {label:'Monthly Cost',  value:fmtK(effHC*inp.costFTE), meta:'Current HC cost', formula:`${effHC}×₹${fmt(inp.costFTE)}`, cls:''},
+  ];
+  document.getElementById('kpiGrid').innerHTML=kpis.map(k=>{
+    const tip = KPI_TIPS[k.label]||'';
+    return `<div class="kpi ${k.cls}">
+      <div class="kpi-label">${k.label}${tip?`<span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">${tip}</span></span>`:''}
+      </div>
+      <div class="kpi-number">${k.value}</div>
+      <div class="kpi-meta">${k.meta}</div>
+      <div class="kpi-formula">${k.formula}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── HEALTH BARS ────────────────────────────────────────────────── */
+function renderStatusBar(gap,reqFTE,effHC,occ){
+  const sp=clamp((effHC/reqFTE)*100,0,100), oc=clamp(occ,0,100);
+  const fc=(p,inv)=>inv?(p>85?'fill-red':p>70?'fill-amber':'fill-green'):(p<60?'fill-red':p<85?'fill-amber':'fill-green');
+  const sc=(p,inv)=>inv?(p>85?'var(--red)':p>70?'var(--amber)':'var(--green)'):(p<60?'var(--red)':p<85?'var(--amber)':'var(--green)');
+  const st=(p,t)=>t==='s'?(p<60?'Critical — Understaffed':p<85?'Watch — Gap Exists':'Healthy'):(p>90?'Critical — Burnout Risk':p>80?'High — Above Safe Band':p>70?'Elevated':'Optimal');
+  const bars=[
+    {name:'Staffing Level',pct:sp,fc:fc(sp,false),sc:sc(sp,false),st:st(sp,'s'),tip:'Effective HC as % of Required FTE. Below 85% indicates a capacity gap.'},
+    {name:'Occupancy Rate', pct:oc,fc:fc(oc,true), sc:sc(oc,true), st:st(oc,'o'), tip:'Agent utilization rate. Safe band: 75–85%. Above 85% drives burnout and SLA risk.'},
+  ];
+  document.getElementById('statusBar').innerHTML=bars.map(b=>`
+    <div class="health-item">
+      <div class="health-top">
+        <span class="health-name">${b.name}
+          <span class="tip-wrap"><i class="tip-icon" style="margin-left:5px">i</i><span class="tooltip">${b.tip}</span></span>
+        </span>
+        <span class="health-val" style="color:${b.sc}">${b.pct.toFixed(1)}%</span>
+      </div>
+      <div class="health-track"><div class="health-fill ${b.fc}" style="width:${b.pct.toFixed(1)}%"></div></div>
+      <div class="health-status" style="color:${b.sc}">${b.st}</div>
+    </div>`).join('');
+}
+
+/* ── CHARTS (pure Canvas, zero dependencies) ────────────────────── */
+function renderCharts(plan){
+  drawFTEChart(plan);
+  drawGapChart(plan);
+}
+
+function makeCanvas(id){
+  const wrap = document.querySelector(`#${id}`).parentElement;
+  let c = document.getElementById(id);
+  if(!c){ c=document.createElement('canvas'); c.id=id; wrap.appendChild(c); }
+  const dpr = window.devicePixelRatio||1;
+  const w = wrap.clientWidth||600, h=180;
+  c.width  = w*dpr; c.height = h*dpr;
+  c.style.width=w+'px'; c.style.height=h+'px';
+  const ctx=c.getContext('2d'); ctx.scale(dpr,dpr);
+  return {ctx,w,h};
+}
+
+function drawFTEChart(plan){
+  const {ctx,w,h} = makeCanvas('fteChart');
+  ctx.clearRect(0,0,w,h);
+  const PAD={t:16,r:16,b:32,l:42};
+  const cw=w-PAD.l-PAD.r, ch=h-PAD.t-PAD.b;
+  const reqs = plan.map(r=>r.reqFTE);
+  const effs = plan.map(r=>r.effectiveHC);
+  const allV = [...reqs,...effs];
+  const mn=Math.min(...allV)*0.85, mx=Math.max(...allV)*1.1;
+  const xStep=cw/(plan.length-1);
+  const yScale=v=>(ch-(v-mn)/(mx-mn)*ch)+PAD.t;
+  const xPos=i=>PAD.l+i*xStep;
+
+  // grid lines
+  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const y=PAD.t+(i/4)*ch;
+    ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(w-PAD.r,y); ctx.stroke();
+    const val=mx-(i/4)*(mx-mn);
+    ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='10px DM Mono,monospace';
+    ctx.textAlign='right'; ctx.fillText(Math.round(val),PAD.l-6,y+3.5);
+  }
+
+  // eff HC line (dashed)
+  ctx.save(); ctx.setLineDash([4,4]);
+  ctx.strokeStyle='rgba(62,207,142,0.5)'; ctx.lineWidth=1.5;
+  ctx.beginPath();
+  effs.forEach((v,i)=>i===0?ctx.moveTo(xPos(i),yScale(v)):ctx.lineTo(xPos(i),yScale(v)));
+  ctx.stroke(); ctx.restore();
+
+  // req FTE line + fill
+  const grad=ctx.createLinearGradient(0,PAD.t,0,h-PAD.b);
+  grad.addColorStop(0,'rgba(79,142,247,0.2)'); grad.addColorStop(1,'rgba(79,142,247,0)');
+  ctx.beginPath();
+  reqs.forEach((v,i)=>i===0?ctx.moveTo(xPos(i),yScale(v)):ctx.lineTo(xPos(i),yScale(v)));
+  ctx.lineTo(xPos(reqs.length-1),yScale(mn));
+  ctx.lineTo(xPos(0),yScale(mn));
+  ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+  ctx.beginPath();
+  reqs.forEach((v,i)=>i===0?ctx.moveTo(xPos(i),yScale(v)):ctx.lineTo(xPos(i),yScale(v)));
+  ctx.strokeStyle='#4F8EF7'; ctx.lineWidth=2; ctx.stroke();
+
+  // dots + labels
+  plan.forEach((_,i)=>{
+    // req dot
+    ctx.beginPath(); ctx.arc(xPos(i),yScale(reqs[i]),3.5,0,Math.PI*2);
+    ctx.fillStyle='#4F8EF7'; ctx.fill();
+    // x axis labels
+    ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='10px DM Sans,sans-serif';
+    ctx.textAlign='center'; ctx.fillText('M'+(i+1),xPos(i),h-PAD.b+14);
+  });
+
+  // legend
+  ctx.font='10px DM Sans,sans-serif'; ctx.textAlign='left';
+  ctx.fillStyle='#4F8EF7';
+  ctx.fillRect(PAD.l,PAD.t-2,10,3);
+  ctx.fillText('Req. FTE',PAD.l+14,PAD.t+2);
+  ctx.save(); ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(62,207,142,0.6)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(PAD.l+100,PAD.t); ctx.lineTo(PAD.l+110,PAD.t); ctx.stroke(); ctx.restore();
+  ctx.fillStyle='rgba(62,207,142,0.8)'; ctx.fillText('Eff. HC',PAD.l+114,PAD.t+2);
+}
+
+function drawGapChart(plan){
+  const {ctx,w,h} = makeCanvas('gapChart');
+  ctx.clearRect(0,0,w,h);
+  const PAD={t:16,r:16,b:32,l:42};
+  const cw=w-PAD.l-PAD.r, ch=h-PAD.t-PAD.b;
+  const gaps=plan.map(r=>r.gap);
+  const mx=Math.max(Math.abs(Math.min(...gaps)),Math.abs(Math.max(...gaps)),2)*1.2;
+  const barW=Math.max(16,cw/gaps.length*0.5);
+  const barStep=cw/(gaps.length);
+  const yCtr=PAD.t+ch/2;
+  const yScale=v=>yCtr-(v/mx)*(ch/2);
+
+  // grid
+  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
+  [0.5,1].forEach(f=>{
+    const yP=PAD.t+ch*(0.5-f*0.5), yN=PAD.t+ch*(0.5+f*0.5);
+    ctx.beginPath(); ctx.moveTo(PAD.l,yP); ctx.lineTo(w-PAD.r,yP); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD.l,yN); ctx.lineTo(w-PAD.r,yN); ctx.stroke();
+  });
+  // zero line
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(PAD.l,yCtr); ctx.lineTo(w-PAD.r,yCtr); ctx.stroke();
+
+  // axis labels
+  ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='10px DM Mono,monospace';
+  ctx.textAlign='right';
+  ctx.fillText('+'+Math.round(mx),PAD.l-5,PAD.t+5);
+  ctx.fillText('0',PAD.l-5,yCtr+4);
+  ctx.fillText('-'+Math.round(mx),PAD.l-5,h-PAD.b+5);
+
+  // bars
+  gaps.forEach((g,i)=>{
+    const x=PAD.l+i*barStep+(barStep-barW)/2;
+    const y=yScale(g), barH=Math.abs(y-yCtr);
+    const clr=g>0?'rgba(242,87,87,0.75)':'rgba(62,207,142,0.75)';
+    const clrB=g>0?'rgba(242,87,87,1)':'rgba(62,207,142,1)';
+    const topY=g>=0?y:yCtr;
+
+    // fill
+    const bg=ctx.createLinearGradient(0,topY,0,topY+barH);
+    bg.addColorStop(0,clrB); bg.addColorStop(1,clr);
+    ctx.fillStyle=bg;
+    ctx.beginPath(); ctx.roundRect?ctx.roundRect(x,topY,barW,barH,3):ctx.rect(x,topY,barW,barH);
+    ctx.fill();
+
+    // value label
+    ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font='10px DM Mono,monospace';
+    ctx.textAlign='center';
+    const lblY=g>=0?y-5:y+13;
+    ctx.fillText((g>0?'+':'')+g,x+barW/2,lblY);
+    // x label
+    ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='10px DM Sans,sans-serif';
+    ctx.fillText('M'+(i+1),x+barW/2,h-PAD.b+14);
+  });
+}
+
+/* ── TABLE ──────────────────────────────────────────────────────── */
+function renderTable(plan){
+  document.getElementById('capacityBody').innerHTML=plan.map((row,i)=>{
+    const gc=row.gap>0?'td-neg':row.gap<0?'td-pos':'';
+    const oc=row.occupancy>90?'td-bad':row.occupancy>80?'td-warn':'';
+    const trend=i>0&&row.occupancy>plan[i-1].occupancy?' ▲':i>0?' ▼':'';
+    return `<tr>
+      <td>${MONTHS[i]}</td>
+      <td>${fmt(row.volume,0)}</td>
+      <td>${row.reqFTE}</td>
+      <td class="td-dim">${row.attritionLoss}</td>
+      <td>${row.effectiveHC}</td>
+      <td class="${oc}">${fmtPct(row.occupancy)}${trend}</td>
+      <td class="${gc}">${row.gap>0?'+':''}${row.gap}</td>
+      <td>${row.hiring>0?row.hiring:'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── SCENARIOS ──────────────────────────────────────────────────── */
+function renderScenarios(inp){
+  const sc=[
+    {tag:'−10% Volume',key:'down',dot:'var(--green)',mult:0.9},
+    {tag:'Base Case',  key:'base',dot:'var(--blue)', mult:1.0},
+    {tag:'+10% Volume',key:'up',  dot:'var(--red)',  mult:1.1},
+  ];
+  document.getElementById('scenarioGrid').innerHTML=sc.map(s=>{
+    const v=inp.volume*s.mult;
+    const {reqFTE:rFTE}=calcBase(v,inp.aht,inp.shrinkage,inp.paidHours,inp.buffer,inp.aiDeflection);
+    const gap=Math.ceil(rFTE)-inp.currentHC;
+    const cost=Math.ceil(rFTE)*inp.costFTE;
+    const isActive=Math.abs(s.mult-_scenarioMult)<0.01;
+    return `<div class="sc-card ${isActive?'sc-active':''}">
+      <div class="sc-tag"><span class="sc-dot" style="background:${s.dot}"></span><span style="color:${s.dot}">${s.tag}</span></div>
+      <div class="sc-stats">
+        <div><div class="sc-val">${fmt(v,0)}</div><div class="sc-lbl">Volume</div></div>
+        <div><div class="sc-val">${Math.ceil(rFTE)}</div><div class="sc-lbl">Req. FTE</div></div>
+        <div><div class="sc-val ${gap>0?'sc-gap-pos':'sc-gap-neg'}">${gap>0?'+':''}${gap}</div><div class="sc-lbl">Gap</div></div>
+        <div><div class="sc-val">${fmtK(cost)}</div><div class="sc-lbl">Monthly Cost</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── RISK FLAGS ─────────────────────────────────────────────────── */
+function renderIntelligence(inp,gap,occ,reqFTE,effHC,plan){
+  const risks=[];
+  if(gap>0&&inp.leadTime>=2) risks.push({s:'HIGH',t:'Late Hiring Risk',d:`${Math.abs(Math.round(gap))} FTE deficit with ${inp.leadTime}-mo lead time. Agents hired today are productive in ${inp.leadTime+2} months. Initiate now.`});
+  const mLoss=Math.round(inp.currentHC*(inp.attrition/100));
+  if(inp.attrition>=5) risks.push({s:inp.attrition>=8?'HIGH':'MEDIUM',t:'Attrition Spiral',d:`Losing ~${mLoss} agents/month (${mLoss*12}/year). High occupancy accelerates exits. BPO target: ≤3%/month.`});
+  if(occ>85) risks.push({s:occ>92?'HIGH':'MEDIUM',t:'Occupancy Breach',d:`${fmtPct(occ)} exceeds safe 75–85% band. Sustained overload raises AHT, errors, and attrition.`});
+  if(gap<-3) risks.push({s:'MEDIUM',t:'Overstaffing / Cost Leakage',d:`${Math.abs(Math.round(gap))} FTEs above requirement → ${fmtK(Math.abs(Math.round(gap))*inp.costFTE)}/mo idle cost. Redeploy or flex-schedule.`});
+  risks.push({s:'LOW',t:'Forecast Sensitivity',d:`±10% volume shifts FTE by ~${Math.ceil(reqFTE*0.1)} agents. Maintain a 13-week rolling forecast.`});
+  if(inp.aiDeflection>0) risks.push({s:'LOW',t:'AI Deflection Impact',d:inp.aiDeflection>20?`Deflection >20% triggered +15% AHT uplift for complex residual calls.`:`Deflection ${inp.aiDeflection}% below 20% threshold. Monitor containment monthly.`});
+  const sm={HIGH:'r-high',MEDIUM:'r-medium',LOW:'r-low'};
+  const bm={HIGH:'badge-high',MEDIUM:'badge-medium',LOW:'badge-low'};
+  document.getElementById('intelligenceLayer').innerHTML=risks.map(r=>`
+    <div class="risk-row ${sm[r.s]}">
+      <span class="risk-badge ${bm[r.s]}">${r.s}</span>
+      <div class="risk-body"><div class="risk-title">${r.t}</div><div class="risk-desc">${r.d}</div></div>
+    </div>`).join('');
+}
+
+/* ── COPILOT ────────────────────────────────────────────────────── */
+function renderCopilot(inp,gap,occ,reqFTE){
+  const a=[];
+  if(gap>0) a.push({t:'Hire Now',d:`Launch for ${Math.ceil(gap)} FTEs. ${inp.leadTime}-mo lead time — every week of delay extends the shortfall at go-live.`});
+  if(inp.attrition>=5) a.push({t:'Reduce Attrition',d:`Each 1% attrition reduction saves ~${fmtK(Math.round(inp.currentHC*0.01)*inp.costFTE)}/mo. Focus on first 90-day tenure window — highest exit risk.`});
+  if(occ>85) a.push({t:'Rebalance Occupancy',d:`Stagger breaks + flex shifts to pull occupancy below 85%. 5% drop typically reduces AHT by 3–5% via improved agent composure.`});
+  a.push({t:'Weekly Forecast Review',d:`13-week rolling cadence. Weekly WFM reviews hold 15–20% tighter required-vs-actual HC variance.`});
+  a.push({t:'Shrinkage Audit',d:`2–3% unplanned shrinkage reduction frees ~${Math.round(inp.currentHC*0.025*inp.paidHours/inp.paidHours)} FTE-equivalent hours/month at zero hire cost.`});
+  if(inp.aiDeflection<15) a.push({t:'AI Deflection Opportunity',d:`Target 20–25% deflection via IVR/chatbot. At 25%, FTE requirement drops ~${Math.ceil(reqFTE*0.15)} agents.`});
+  document.getElementById('copilotActions').innerHTML=`<div class="copilot-grid">${a.slice(0,6).map((x,i)=>`
+    <div class="cop-card"><div class="cop-n">0${i+1}</div><div class="cop-title">${x.t}</div><div class="cop-body">${x.d}</div></div>`).join('')}</div>`;
+}
+
+/* ── FORMULAS ───────────────────────────────────────────────────── */
+function renderFormulas(inp,workload,productiveHours,reqFTE,adjAHT){
+  const fs=[
+    {q:'How is FTE calculated?',         eq:'FTE = (Workload ÷ Prod. Hours) × (1 + Buffer%)',  a:`Workload=${fmt(workload,0)}h, Prod.Hrs=${fmt(productiveHours,1)}h. Result: ${Math.ceil(reqFTE)} FTE required.`},
+    {q:'What is Workload?',              eq:'Workload = (Volume × AHT) ÷ 3600',                a:`${fmt(inp.volume*_scenarioMult,0)} calls × ${adjAHT}s ÷ 3600 = ${fmt(workload,0)} agent-hours/month.`},
+    {q:'Why does shrinkage matter?',     eq:'Prod. Hours = Paid Hours × (1 − Shrinkage%)',      a:`At ${inp.shrinkage}%, each agent delivers ${fmt(productiveHours,1)} of ${inp.paidHours} paid hours. The #1 understaffing cause in BPO.`},
+    {q:'What does occupancy mean?',      eq:'Occupancy = Workload ÷ (HC × Paid Hours) × 100',  a:`75–85% is optimal. Above 85% = burnout + SLA risk. Below 70% = idle cost.`},
+    {q:'How does ramp affect capacity?', eq:'Eff. HC = Tenured HC + Σ(Hires × Ramp%)',         a:`Ramp ${inp.ramp1}%→${inp.ramp2}%→${inp.ramp3}%. Hire today = ${inp.ramp1}% productive in M1. Plan beyond paper headcount.`},
+    {q:'What is attrition cost?',        eq:'Monthly Loss = HC × Attrition%',                  a:`${inp.attrition}%/month = ${Math.round(inp.currentHC*inp.attrition/100)} agents lost/month. Must model continuously.`},
+  ];
+  document.getElementById('formulaGrid').innerHTML=fs.map(f=>`
+    <div class="formula-card">
+      <div class="formula-q">${f.q}</div>
+      <div class="formula-eq">${f.eq}</div>
+      <div class="formula-ans">${f.a}</div>
+    </div>`).join('');
+}
+
+/* ── INSIGHTS ───────────────────────────────────────────────────── */
+function renderInsights(inp,gap,occ,reqFTE,workload,productiveHours){
+  const costPerHour=inp.costFTE/inp.paidHours;
+  const shrinkCost=costPerHour*(inp.paidHours*inp.shrinkage/100);
+  const ins=[
+    {t:'Shrinkage × Volume is the dominant staffing driver',
+     b:`${Math.ceil(reqFTE)} FTE requirement driven by ${fmt(inp.volume*_scenarioMult,0)} calls + ${inp.shrinkage}% shrinkage. Shrinkage costs ${fmtK(Math.round(inp.currentHC*shrinkCost))}/month in non-productive paid time. A 5% reduction frees 2–4 FTE equivalents at zero hire cost.`,
+     q:`Every 1% shrinkage reduction ≈ ${(workload/(inp.paidHours*Math.pow(1-inp.shrinkage/100,2)*100)).toFixed(1)} FTE saved.`},
+    {t:'Ramp delay is the silent capacity killer',
+     b:`Hiring ${Math.ceil(gap)} FTEs today yields only ${Math.round(Math.ceil(gap)*inp.ramp1/100)} effective FTEs in Month 1. Teams using raw headcount instead of ramp-adjusted capacity understaff by 15–20% routinely.`,
+     q:`M1 ramp-adjusted capacity: ${Math.round(Math.ceil(gap)*inp.ramp1/100)} of ${Math.ceil(gap)} hired FTEs. Plan beyond paper headcount.`},
+    {t:'Buffer is insurance, not waste',
+     b:`Your ${inp.buffer}% buffer adds ${Math.ceil(reqFTE-workload/productiveHours)} FTEs above mathematical minimum — absorbing forecast error, spikes, and attrition events. Enterprise BPOs globally recommend 25–35% for inbound operations.`,
+     q:`Remove the buffer and you staff for the forecast, not for reality.`},
+  ];
+  document.getElementById('expertInsights').innerHTML=ins.map(i=>`
+    <div class="insight-card">
+      <div class="ins-title">${i.t}</div>
+      <div class="ins-body">${i.b}</div>
+      <div class="ins-quote">${i.q}</div>
+    </div>`).join('');
+}
+
+/* ── RESET ──────────────────────────────────────────────────────── */
+function resetInputs(){
+  const d={volume:55000,aht:300,shrinkage:30,paidHours:160,buffer:30,currentHC:65,
+           attrition:5,leadTime:2,costFTE:50000,aiDeflection:0,ramp1:50,ramp2:70,ramp3:100};
+  for(const [id,v] of Object.entries(d)){ const el=document.getElementById(id); if(el) el.value=v; }
+  document.getElementById('outputArea').classList.add('hidden');
+  document.getElementById('emptyState').classList.remove('hidden');
+  document.getElementById('stickyKpi').classList.remove('visible');
+  _lastInp=null; _scenarioMult=1.0; _stickyInited=false;
+  document.querySelectorAll('.stog-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  document.querySelector('.input-panel').scrollIntoView({behavior:'smooth'});
+}
+
+/* ── RESIZE: redraw charts on window resize ─────────────────────── */
+let _resizeTimer;
+window.addEventListener('resize',()=>{
+  clearTimeout(_resizeTimer);
+  _resizeTimer=setTimeout(()=>{ if(_lastInp){ const plan=buildMonthlyPlan(_lastInp); renderCharts(plan); } },200);
+});
+</script>
+</body>
+</html>
