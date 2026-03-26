@@ -529,6 +529,68 @@ tbody tr:hover { background: var(--surface2); }
 .suite-card:hover .suite-link { gap: 9px; }
 .suite-link svg { width: 12px; height: 12px; }
 
+
+/* ─── GEO CONTENT BLOCKS ────────────────────────────── */
+.geo-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.geo-block h2 {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+}
+.geo-list { margin-left: 18px; color: var(--text2); }
+.geo-list li { margin-bottom: 8px; }
+.geo-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 12px;
+}
+@media(max-width:720px){ .geo-grid{ grid-template-columns:1fr; } }
+.geo-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 14px;
+}
+.geo-card h3 { font-size: 13px; margin-bottom: 6px; color: var(--text); }
+.geo-card p { font-size: 12px; color: var(--text2); }
+.geo-definitions { display: grid; gap: 10px; }
+.geo-definitions dt { font-weight: 600; color: var(--text); }
+.geo-definitions dd { color: var(--text2); margin-left: 0; }
+.formula-list { display: grid; gap: 10px; }
+.formula-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+.faq-list { display: grid; gap: 12px; }
+.faq-item {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  border-radius: var(--rs);
+  padding: 12px;
+}
+.faq-item strong { color: var(--text); display:block; margin-bottom: 4px; }
+.faq-item p { color: var(--text2); font-size: 12px; }
+.authority-note {
+  font-size: 13px;
+  color: var(--text2);
+  border-left: 2px solid var(--blue);
+  padding-left: 12px;
+}
+.internal-links { display: grid; gap: 10px; }
+.internal-links a { color: var(--blue); text-decoration: none; }
+.internal-links a:hover { text-decoration: underline; }
+
 /* ─── SEO NOTE ───────────────────────────────────────── */
 .seo-note {
   border: 1px dashed rgba(255,255,255,0.04);
@@ -588,6 +650,18 @@ tbody tr:hover { background: var(--surface2); }
 
 <!-- ══ PAGE ══════════════════════════════════════════════════════════ -->
 <div class="page">
+
+  <!-- LLM SUMMARY (GEO/SEO) -->
+  <section class="geo-block" id="llm-summary">
+    <h2>Capacity Planning Engine – What This Tool Does</h2>
+    <ul class="geo-list">
+      <li>Calculates required workforce (FTE) based on volume, AHT, shrinkage, and occupancy.</li>
+      <li>Projects hiring needs using attrition and ramp-up curves.</li>
+      <li>Identifies staffing gaps and surplus capacity.</li>
+      <li>Estimates cost impact of workforce decisions.</li>
+      <li>Supports long-term capacity planning for call centers and BPO operations.</li>
+    </ul>
+  </section>
 
   <!-- INPUT PANEL -->
   <div class="input-panel" id="inputPanel">
@@ -801,6 +875,98 @@ tbody tr:hover { background: var(--surface2); }
 
   </div><!-- /outputArea -->
 
+
+  <!-- HOW CAPACITY PLANNING WORKS -->
+  <section class="geo-block" aria-labelledby="capacity-how-title">
+    <h2 id="capacity-how-title">How Capacity Planning Works in Workforce Management</h2>
+    <div class="geo-grid">
+      <article class="geo-card">
+        <h3>Step 1: Workload Calculation</h3>
+        <p>Convert volume and AHT into total workload hours.</p>
+      </article>
+      <article class="geo-card">
+        <h3>Step 2: Available Capacity</h3>
+        <p>Adjust paid hours using shrinkage and occupancy.</p>
+      </article>
+      <article class="geo-card">
+        <h3>Step 3: Gap Analysis</h3>
+        <p>Compare required FTE vs current headcount.</p>
+      </article>
+      <article class="geo-card">
+        <h3>Step 4: Hiring Plan</h3>
+        <p>Apply attrition and ramp curves to project hiring needs.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="geo-block" aria-labelledby="terms-title">
+    <h2 id="terms-title">Key Capacity Planning Terms</h2>
+    <dl class="geo-definitions">
+      <div><dt>FTE (Full-Time Equivalent)</dt><dd>Number of agents required to handle workload.</dd></div>
+      <div><dt>Shrinkage</dt><dd>Time agents are paid but unavailable.</dd></div>
+      <div><dt>Occupancy</dt><dd>Percentage of time agents are actively working.</dd></div>
+      <div><dt>Attrition</dt><dd>Rate at which employees leave.</dd></div>
+      <div><dt>Ramp-Up</dt><dd>Time taken for new hires to reach full productivity.</dd></div>
+    </dl>
+  </section>
+
+  <section class="geo-block" aria-labelledby="formula-title">
+    <h2 id="formula-title">Core Capacity Planning Formulas</h2>
+    <div class="formula-list">
+      <div class="formula-item">Workload Hours = (Volume × AHT) / 3600</div>
+      <div class="formula-item">Required FTE = Workload Hours / (Paid Hours × (1 - Shrinkage) × Occupancy)</div>
+      <div class="formula-item">Net FTE Gap = Required FTE - Current Headcount</div>
+    </div>
+  </section>
+
+  <section class="geo-block" aria-labelledby="use-case-title">
+    <h2 id="use-case-title">Who Should Use This Capacity Planning Tool?</h2>
+    <ul class="geo-list">
+      <li><strong>WFM Analysts:</strong> Calculate staffing requirements.</li>
+      <li><strong>Capacity Planners:</strong> Build hiring plans.</li>
+      <li><strong>Operations Leaders:</strong> Identify staffing risks.</li>
+      <li><strong>BPO Managers:</strong> Plan long-term workforce strategy.</li>
+    </ul>
+  </section>
+
+  <section class="geo-block" aria-labelledby="faq-title">
+    <h2 id="faq-title">Capacity Planning FAQs</h2>
+    <div class="faq-list">
+      <article class="faq-item">
+        <strong>How do you calculate required FTE in a call center?</strong>
+        <p>Required FTE is calculated using workload, shrinkage, and occupancy assumptions.</p>
+      </article>
+      <article class="faq-item">
+        <strong>What is shrinkage in workforce planning?</strong>
+        <p>Shrinkage is the percentage of paid time not spent handling work.</p>
+      </article>
+      <article class="faq-item">
+        <strong>How does attrition impact hiring plans?</strong>
+        <p>Higher attrition increases hiring requirements to maintain staffing levels.</p>
+      </article>
+      <article class="faq-item">
+        <strong>What is a good occupancy rate?</strong>
+        <p>Typically 80–90% depending on service levels.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="geo-block" aria-labelledby="links-title">
+    <h2 id="links-title">Explore More Workforce Management Tools</h2>
+    <div class="internal-links">
+      <p><a href="https://abdulbasiteverise.github.io/abire-forecast-validator/" target="_blank" rel="noopener">Forecast Validator</a> helps validate your forecast before planning capacity.</p>
+      <p><a href="https://abdulbasiteverise.github.io/Intraday-Variance-analysis/" target="_blank" rel="noopener">Intraday Variance Analysis</a> lets you track real-time deviations from plan.</p>
+      <p><a href="https://abdulbasiteverise.github.io/wfm-multi-queue-allocation-simulator/" target="_blank" rel="noopener">Multi-Queue Allocation Simulator</a> helps optimize agent distribution across queues.</p>
+      <p><a href="https://abdulbasiteverise.github.io/bwie-wfm-simulator/" target="_blank" rel="noopener">BWIE Simulator</a> is useful to model backlog and workload distribution.</p>
+      <p><a href="https://abdulbasiteverise.github.io/Forecast-Smoothing/" target="_blank" rel="noopener">Forecast Smoothing</a> improves forecast accuracy and stability.</p>
+    </div>
+  </section>
+
+  <section class="geo-block" aria-labelledby="authority-title">
+    <h2 id="authority-title">Author</h2>
+    <p class="authority-note">Built by Abdul Basit – Workforce Management Lead specializing in forecasting, real-time analytics, and capacity planning across global BPO operations.</p>
+  </section>
+
   <!-- WFM INTELLIGENCE SUITE (always visible) -->
   <div class="suite-section sec" style="margin-top:64px;">
     <div class="sec-header"><div class="sec-title">WFM Intelligence Suite</div></div>
@@ -857,6 +1023,100 @@ tbody tr:hover { background: var(--surface2); }
   <span>WFM Capacity Planning Engine™ · Built by Abdul Basit · WFM Lead &amp; Capacity Planning Specialist</span>
   <span>Workforce Management · Forecasting · Scheduling · Global BPO</span>
 </footer>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "WFM Capacity Planning Engine",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "description": "Capacity planning tool for calculating call center FTE, staffing gaps, hiring needs, and workforce cost impact.",
+  "url": "https://abdulbasiteverise.github.io/wfm-intelligence-engine/",
+  "author": {
+    "@type": "Person",
+    "name": "Abdul Basit"
+  },
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How do you calculate required FTE in a call center?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Required FTE is calculated using workload, shrinkage, and occupancy assumptions."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is shrinkage in workforce planning?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Shrinkage is the percentage of paid time not spent handling work."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How does attrition impact hiring plans?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Higher attrition increases hiring requirements to maintain staffing levels."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is a good occupancy rate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Typically 80–90% depending on service levels."
+      }
+    }
+  ]
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "How Capacity Planning Works in Workforce Management",
+  "description": "Four-step method to calculate workload, available capacity, staffing gap, and hiring needs.",
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Workload Calculation",
+      "text": "Convert volume and AHT into total workload hours."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Available Capacity",
+      "text": "Adjust paid hours using shrinkage and occupancy."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Gap Analysis",
+      "text": "Compare required FTE vs current headcount."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Hiring Plan",
+      "text": "Apply attrition and ramp curves to project hiring needs."
+    }
+  ]
+}
+</script>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      SCRIPT — Logic unchanged. New: tooltips, sticky KPI, scenario
