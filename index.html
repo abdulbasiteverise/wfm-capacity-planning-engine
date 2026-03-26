@@ -164,7 +164,30 @@ body::before {
   letter-spacing: 0.12em; padding: 4px 9px; border-radius: 6px;
 }
 .logo-name { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
-.logo-by   { font-size: 11px; color: var(--text3); margin-top: 1px; }
+
+.logo-by { font-size: 11px; color: var(--text3); margin-top: 1px; line-height: 1.4; }
+.input-micro-authority { font-size: 11px; color: var(--text3); margin-top: 6px; }
+.micro-section {
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.01);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+.micro-section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+.micro-section p, .micro-section li {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.6;
+}
+.micro-section ul { margin-left: 16px; }
+
 .header-meta { display: flex; align-items: center; gap: 20px; }
 .geo-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--text3); }
 .header-tagline { font-size: 12px; color: var(--text3); }
@@ -638,7 +661,7 @@ tbody tr:hover { background: var(--surface2); }
       <span class="logo-chip">WFM</span>
       <div>
         <div class="logo-name">Capacity Planning Engine™</div>
-        <div class="logo-by">Abdul Basit · WFM Lead & Capacity Planning Specialist</div>
+        <div class="logo-by">Built by Abdul Basit · WFM Lead at Everise<br/>Specializing in Capacity Planning, Forecasting &amp; Workforce Strategy</div>
       </div>
     </div>
     <div class="header-meta">
@@ -669,6 +692,7 @@ tbody tr:hover { background: var(--surface2); }
       <div>
         <div class="input-title">Scenario Inputs</div>
         <div class="input-hint">Enter workforce parameters — engine computes FTE, gap, occupancy &amp; 6-month plan.</div>
+        <div class="input-micro-authority">Designed based on real-world WFM operations across global BPO environments.</div>
       </div>
       <span class="sample-pill">Sample data loaded</span>
     </div>
@@ -1016,12 +1040,27 @@ tbody tr:hover { background: var(--surface2); }
     <p>This model reflects real-world workforce management practices used across enterprise contact centers globally. WFM Capacity Planning Engine™ applies Erlang-Equivalent Demand logic and shrinkage-adjusted FTE modeling — standard in BPO operations across India, Dubai, Philippines, and Fortune 500 contact centers. Keywords: workforce management capacity planning · call center forecasting · contact center staffing model · long-term capacity planning BPO · how to calculate FTE in call center · call center staffing formula explained · WFM scheduling optimization · Erlang staffing model.</p>
   </div>
 
+
+  <section class="micro-section" aria-labelledby="creator-about-title">
+    <h3 id="creator-about-title">About the Creator</h3>
+    <p>Abdul Basit is a Workforce Management Lead at Everise, specializing in forecasting, capacity planning, and real-time operations.</p>
+    <p>This tool reflects practical WFM strategies used in real-world contact center environments.</p>
+  </section>
+
+  <section class="micro-section" aria-labelledby="wfm-insights-title">
+    <h3 id="wfm-insights-title">WFM Insights</h3>
+    <ul>
+      <li>Capacity planning is about balancing workload, not just headcount.</li>
+      <li>Most staffing gaps originate from forecasting inaccuracies.</li>
+      <li>Shrinkage and occupancy define real capacity — not raw FTE.</li>
+    </ul>
+  </section>
+
 </div><!-- /page -->
 
 <div class="footer-divider"></div>
 <footer class="footer">
-  <span>WFM Capacity Planning Engine™ · Built by Abdul Basit · WFM Lead &amp; Capacity Planning Specialist</span>
-  <span>Workforce Management · Forecasting · Scheduling · Global BPO</span>
+  <span>Capacity Planning Engine™ · Built by Abdul Basit<br/>Workforce Management Lead at Everise<br/>Focused on Forecasting, Capacity Planning, and Real-Time Operations</span>
 </footer>
 
 
