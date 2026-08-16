@@ -1378,9 +1378,16 @@ function calcBase(vol,aht,shrinkage,paidHours,buffer,aiDeflection){
 
 /* Ramp multiplier for a single cohort of agents at a given plan month.
    origin=-1 → pre-existing staff, already fully tenured (100% productive).
-   origin>=0 → hired at that month index; ramps through 3 monthly stages
-               relative to hire month: +0 = r1%, +1 = r2%, +2 and beyond
-               = r3% (steady-state / near-full productivity). */
+   origin>=0 → treated as the cohort's ACTIVE/ARRIVAL month (i.e. lead time
+               has already been applied by the caller — see arrivalMonth()
+               below); ramps through 3 monthly stages relative to that
+               arrival month: +0 = r1%, +1 = r2%, +2 and beyond = r3%
+               (steady-state / near-full productivity).
+   NOTE: this function itself is lead-time-agnostic — it only answers "how
+   far into its ramp is a cohort that became active in month `origin`".
+   Callers are responsible for shifting `origin` by lead time first. This
+   keeps computeRecommendedAction()'s pre-shifted "months since arrival"
+   call site (and the r1/r2/r3-fraction unit tests) working unchanged. */
 function rampMultiplierFor(origin,month,r1,r2,r3){
   if(origin===-1) return 1;
   const offset=month-origin;
@@ -1388,6 +1395,32 @@ function rampMultiplierFor(origin,month,r1,r2,r3){
   if(offset===0) return r1/100;
   if(offset===1) return r2/100;
   return r3/100;
+}
+
+/* Converts a cohort's hiring-DECISION month into its ARRIVAL month, i.e.
+   the first plan month it is physically on the floor and can start
+   ramping (M1 = r1). This is where inp.leadTime actually gets applied.
+
+   Cohort timing convention (hiring initiated in month `origin`):
+     - buildMonthlyPlan() sizes+appends a new cohort to `cohorts` only
+       AFTER month `origin`'s numbers are computed, so the very earliest a
+       cohort can be visible in the plan is already month origin+1 — that
+       1-month gap is an architectural minimum, not part of leadTime.
+     - Lead Time = 0 or 1  → cohort arrives at origin+1 (the architectural
+       floor already covers a 1-month lead time; there's nothing left to
+       add), and is at ramp stage M1 (r1%) that month.
+     - Lead Time = 2       → cohort arrives one month later, at origin+2,
+       still at ramp stage M1 (r1%) on arrival.
+     - Lead Time = N (N>1) → arrives at origin+N, at M1 (r1%).
+     - From the arrival month onward the cohort ramps M1 → M2 → M3+
+       exactly as rampMultiplierFor() already models (r1, then r2, then
+       r3 steady state) — lead time only delays WHEN ramping starts, it
+       never changes the ramp curve itself.
+   Pre-existing staff (origin=-1) are unaffected — they're already fully
+   tenured and rampMultiplierFor() short-circuits them to 100%. */
+function arrivalMonth(origin,leadTime){
+  if(origin===-1) return -1;
+  return origin+Math.max(Math.round(leadTime||0),1);
 }
 
 /* Monthly headcount/ramp/hiring model.
@@ -1413,12 +1446,19 @@ function buildMonthlyPlan(inp){
     const totalAfter=cohorts.reduce((s,c)=>s+c.physicalHC,0);
     const attritionLoss=Math.round(totalBefore-totalAfter);
 
-    // physicalHC: raw headcount (every agent counted once).
-    // effectiveHC: that same headcount weighted by each cohort's ramp stage.
+    // physicalHC: raw headcount (every agent counted once) — lead time does
+    // NOT delay this; a hired cohort is physical headcount (e.g. in
+    // recruiting/training pipeline) from its decision month, it just isn't
+    // PRODUCTIVE yet. effectiveHC: that same headcount weighted by each
+    // cohort's ramp stage, where the ramp clock only starts once the
+    // cohort has actually arrived (decision month + lead time, floored at
+    // the 1-month architectural minimum — see arrivalMonth() above). A
+    // cohort that hasn't arrived yet contributes 0 effective FTE this
+    // month (rampMultiplierFor returns 0 for a negative offset).
     let physicalHC=0, effectiveHC=0;
     cohorts.forEach(c=>{
       physicalHC+=c.physicalHC;
-      effectiveHC+=c.physicalHC*rampMultiplierFor(c.origin,m,eR.r1,eR.r2,eR.r3);
+      effectiveHC+=c.physicalHC*rampMultiplierFor(arrivalMonth(c.origin,inp.leadTime),m,eR.r1,eR.r2,eR.r3);
     });
 
     // Occupancy = Workload ÷ (Effective HC × Productive Hours) × 100.
@@ -1427,7 +1467,23 @@ function buildMonthlyPlan(inp){
     // available to handle work.
     const occupancy=effectiveHC>0?(workload/(effectiveHC*productiveHours))*100:999;
     const gap=Math.ceil(reqFTE)-Math.round(effectiveHC);
-    const hiring=Math.max(0,gap);
+
+    // Ramp-aware hiring: a cohort hired this month becomes active (arrives)
+    // at month + arrivalMonth() offset (see above — the 1-month
+    // architectural floor, or inp.leadTime if longer), and on arrival is
+    // ALWAYS at ramp stage r1 (M1) regardless of how long the lead time
+    // was — lead time delays WHEN the cohort starts ramping, it never
+    // skips it straight to a later ramp stage. So r1 is "the first
+    // relevant ramp stage" a forward-sized hire will actually hit. Sizing
+    // physical hires as gap ÷ (r1/100), rather than 1:1 with the
+    // effective-FTE gap, means the cohort's ramp-adjusted contribution
+    // actually closes the deficit once it comes online — instead of
+    // landing at only ~r1% of the gap and leaving a recurring shortfall
+    // that would otherwise force repeated reactive top-up hiring in later
+    // months. Falls back to r2, then to a 1:1 ratio, only in the
+    // degenerate case where r1 is 0 (agents start at 0% productivity).
+    const rampAtFirstCount = eR.r1>0 ? eR.r1/100 : (eR.r2>0 ? eR.r2/100 : 1);
+    const hiring=gap>0 ? Math.ceil(gap/rampAtFirstCount) : 0;
 
     plan.push({
       month:m,volume:vol,workload,reqFTE:Math.ceil(reqFTE),attritionLoss,
@@ -1847,7 +1903,7 @@ function renderExec(inp,reqFTE,eff,gap,occ){
     :occ>80?`HIGH — Occupancy ${fmtPct(occ)}. Hire within 30 days.`
     :occ>70?`MODERATE — Occupancy ${fmtPct(occ)}. Monitor attrition.`
     :`HEALTHY — Occupancy ${fmtPct(occ)}. Plan for growth.`;
-  const mandate=gap>0?`Recruit ${Math.ceil(gap)} FTEs now. Account for ${inp.leadTime}-mo lead time + ramp.`
+  const mandate=gap>0?`Recruit approximately ${Math.ceil(gap)} physical HC, accounting for the current staffing gap, ${inp.leadTime}-mo hiring lead time, and ramp. See Recommended Action for the ramp-adjusted hiring plan.`
     :`Optimize capacity. Consider cross-training or flex scheduling.`;
   const set=(id,eye,val)=>{
     document.getElementById(id).innerHTML=`<div class="ec-eyebrow">${eye}</div><div class="ec-value">${val}</div>`;
@@ -2220,8 +2276,12 @@ function runValidationSuite(){
   }
 
   // 2. 10 hires at 50% ramp — must contribute 5.0 effective FTE, not 10 or 15
+  // (leadTime:1 here so the cohort's first active month lines up with the
+  // architectural minimum — plan[1] — matching the original intent of this
+  // check; ramp1/2/3 are all equal so the specific ramp stage reached
+  // doesn't affect the expected number either way).
   {
-    const inp={...baseInp,currentHC:0,volume:10000,attrition:0,ramp1:50,ramp2:50,ramp3:50};
+    const inp={...baseInp,currentHC:0,volume:10000,attrition:0,ramp1:50,ramp2:50,ramp3:50,leadTime:1};
     const plan=buildMonthlyPlan(inp);
     const hiredM0=plan[0].hiring;
     if(hiredM0>0 && plan.length>1){
@@ -2291,6 +2351,98 @@ function runValidationSuite(){
       fastDays<slowDays,`fast=${fastDays}d, slow=${slowDays}d`);
     check('Action date: slow ramp still bounded at the model max (60d)',slowDays===60);
   }
+
+  // 10. Ramp fraction contributions — user-specified checks A/B/C:
+  // 10 hires at a given ramp% contribute exactly that fraction as effective FTE.
+  {
+    const contrib=(pct)=>Math.round(10*rampMultiplierFor(0,1,pct,pct,pct)*10)/10;
+    check('A. 10 hires at 50% ramp = 5 effective FTE',contrib(50)===5,`got=${contrib(50)}`);
+    check('B. 10 hires at 70% ramp = 7 effective FTE',contrib(70)===7,`got=${contrib(70)}`);
+    check('C. 10 hires at 100% ramp = 10 effective FTE',contrib(100)===10,`got=${contrib(100)}`);
+  }
+
+  // 11. Forward-looking monthly hiring: physical hires must be sized above
+  // the raw effective-FTE gap when ramp<100%, so that once the cohort's
+  // sizing ramp stage is actually reached, its ramp-adjusted contribution
+  // closes the deficit that triggered the hire — instead of only partially
+  // closing it and leaving a recurring shortfall. (Here ramp1:0, so the
+  // sizing formula's r1-then-r2 fallback lands on r2=50% — the check below
+  // reflects that fallback rather than hardcoding r1.)
+  {
+    const inp={...baseInp,currentHC:0,volume:5000,attrition:0,ramp1:0,ramp2:50,ramp3:100};
+    const plan=buildMonthlyPlan(inp);
+    const gapM0=plan[0].gap, hiredM0=plan[0].hiring;
+    check('Forward-looking hiring: physical hires exceed the raw effective gap when ramp<100%',
+      gapM0>0 && hiredM0>gapM0,`gap=${gapM0}, hired=${hiredM0}`);
+    check('Forward-looking hiring: ramp-adjusted contribution at the sizing ramp stage (r2 fallback, since r1=0) closes the prior month\'s gap',
+      Math.round(hiredM0*0.5)>=gapM0-1,
+      `hired=${hiredM0}, contribution@r2=${Math.round(hiredM0*0.5)}, priorGap=${gapM0}`);
+    check('Forward-looking hiring: effHC ≤ physicalHC invariant holds',invariantHolds(plan));
+  }
+
+  // ── Lead Time + Ramp alignment (A–G) ─────────────────────────────
+  // Isolated checks on arrivalMonth()+rampMultiplierFor() directly, using
+  // a cohort hired ("initiated") in month 0 with distinct r1/r2/r3 values
+  // so each ramp stage is unambiguous in the assertions below.
+  {
+    const R1=40,R2=70,R3=100;
+    const contributionAt=(leadTime,month)=>rampMultiplierFor(arrivalMonth(0,leadTime),month,R1,R2,R3);
+
+    // A. Lead Time = 0 → cohort's first-ever contribution is at M1 ramp (r1).
+    // (The 1-month architectural floor means month 0 itself is always 0 —
+    // see arrivalMonth() comments — so "contributes at M1 ramp" means the
+    // first month it contributes anything, it's at r1%, not r2% or r3%.)
+    check('A. Lead Time=0: cohort\'s first contribution is at M1 ramp (r1), not r2/r3',
+      contributionAt(0,0)===0 && contributionAt(0,1)===R1/100,
+      `month0=${contributionAt(0,0)}, month1=${contributionAt(0,1)}, expected r1=${R1/100}`);
+
+    // B. Lead Time = 1 → zero effective contribution before Month 1.
+    check('B. Lead Time=1: no effective contribution before Month 1',
+      contributionAt(1,0)===0,`month0 contribution=${contributionAt(1,0)}`);
+
+    // C. Lead Time = 2 → zero effective contribution before Month 2.
+    check('C. Lead Time=2: no effective contribution before Month 2',
+      contributionAt(2,0)===0 && contributionAt(2,1)===0,
+      `month0=${contributionAt(2,0)}, month1=${contributionAt(2,1)}`);
+
+    // D. Once active, a cohort ramps M1 → M2 → M3+ regardless of lead time.
+    check('D. Lead Time=2: after arrival (Month 2), cohort follows M1→M2→M3+ ramp',
+      contributionAt(2,2)===R1/100 && contributionAt(2,3)===R2/100 && contributionAt(2,4)===R3/100 && contributionAt(2,5)===R3/100,
+      `M1(mo2)=${contributionAt(2,2)}, M2(mo3)=${contributionAt(2,3)}, M3(mo4)=${contributionAt(2,4)}, M3+(mo5)=${contributionAt(2,5)}`);
+  }
+
+  // E. effectiveHC ≤ physicalHC every month, across a spread of lead times
+  // (including 0, and a lead time long enough to span the whole 6-mo plan).
+  {
+    [0,1,2,3,6].forEach(lt=>{
+      const inp={...baseInp,currentHC:20,volume:40000,attrition:5,leadTime:lt};
+      const plan=buildMonthlyPlan(inp);
+      check(`E. Lead Time=${lt}: effHC ≤ physicalHC every month`,invariantHolds(plan),
+        plan.map(r=>`m${r.month}:eff=${r.effectiveHC},phys=${r.physicalHC}`).join(' '));
+    });
+  }
+
+  // F. Forward-looking hiring sizes physical HC off the first relevant ramp
+  // stage (r1, since ramp1>0 here) — i.e. hiring = ceil(gap / (r1/100)),
+  // and that sizing is leadTime-independent (the gap it's closing is this
+  // month's, regardless of how long the cohort takes to arrive).
+  {
+    [0,1,2,4].forEach(lt=>{
+      const inp={...baseInp,currentHC:0,volume:20000,attrition:0,ramp1:40,ramp2:70,ramp3:100,leadTime:lt};
+      const plan=buildMonthlyPlan(inp);
+      const gapM0=plan[0].gap, hiredM0=plan[0].hiring;
+      const expected=gapM0>0?Math.ceil(gapM0/0.4):0;
+      check(`F. Lead Time=${lt}: hiring sized off r1 (first relevant ramp stage): hiring=ceil(gap/r1%)`,
+        hiredM0===expected,`gap=${gapM0}, hired=${hiredM0}, expected=${expected}`);
+    });
+  }
+
+  // G. Full regression: every earlier scenario in this suite (1–11) plus
+  // the invariant re-checked once more with the default baseInp (leadTime
+  // 2) confirms the fix didn't disturb attrition, sizing, or the core
+  // no-double-count invariant.
+  check('G. Baseline scenario (default leadTime=2): effHC ≤ physicalHC invariant holds',
+    invariantHolds(buildMonthlyPlan(baseInp)));
 
   const failed=results.filter(r=>!r.pass);
   console.groupCollapsed(`WFM Capacity Planning Engine — validation suite: ${results.length-failed.length}/${results.length} passed`);
