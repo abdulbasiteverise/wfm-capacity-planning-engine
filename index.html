@@ -726,7 +726,7 @@ tbody tr:hover { background: var(--surface2); }
   <section class="geo-block" id="llm-summary">
     <h2>Capacity Planning Engine – What This Tool Does</h2>
     <ul class="geo-list">
-      <li>Calculates required workforce (FTE) based on volume, AHT, shrinkage, and occupancy.</li>
+      <li>Calculates required workforce (FTE) based on volume, AHT, shrinkage, and planning buffer.</li>
       <li>Projects hiring needs using attrition and ramp-up curves.</li>
       <li>Identifies staffing gaps and surplus capacity.</li>
       <li>Estimates cost impact of workforce decisions.</li>
@@ -1050,7 +1050,7 @@ tbody tr:hover { background: var(--surface2); }
       </article>
       <article class="geo-card">
         <h3>Step 2: Available Capacity</h3>
-        <p>Adjust paid hours using shrinkage and occupancy.</p>
+        <p>Convert paid hours into productive hours using shrinkage, then apply the planning buffer to size Required FTE.</p>
       </article>
       <article class="geo-card">
         <h3>Step 3: Gap Analysis</h3>
@@ -1068,7 +1068,7 @@ tbody tr:hover { background: var(--surface2); }
     <dl class="geo-definitions">
       <div><dt>FTE (Full-Time Equivalent)</dt><dd>Number of agents required to handle workload.</dd></div>
       <div><dt>Shrinkage</dt><dd>Time agents are paid but unavailable.</dd></div>
-      <div><dt>Occupancy</dt><dd>Percentage of time agents are actively working.</dd></div>
+      <div><dt>Occupancy</dt><dd>Percentage of available (productive) time agents spend actively handling work. A derived output, not a Required FTE input.</dd></div>
       <div><dt>Attrition</dt><dd>Rate at which employees leave.</dd></div>
       <div><dt>Ramp-Up</dt><dd>Time taken for new hires to reach full productivity.</dd></div>
     </dl>
@@ -1078,8 +1078,10 @@ tbody tr:hover { background: var(--surface2); }
     <h2 id="formula-title">Core Capacity Planning Formulas</h2>
     <div class="formula-list">
       <div class="formula-item">Workload Hours = (Volume × AHT) / 3600</div>
-      <div class="formula-item">Required FTE = Workload Hours / (Paid Hours × (1 - Shrinkage) × Occupancy)</div>
-      <div class="formula-item">Net FTE Gap = Required FTE - Current Headcount</div>
+      <div class="formula-item">Productive Hours = Paid Hours × (1 - Shrinkage)</div>
+      <div class="formula-item">Required FTE = (Workload Hours / Productive Hours) × (1 + Buffer)</div>
+      <div class="formula-item">Occupancy = Workload Hours / (Effective HC × Productive Hours)</div>
+      <div class="formula-item">Net FTE Gap = Required FTE - Effective Headcount</div>
     </div>
   </section>
 
@@ -1098,7 +1100,7 @@ tbody tr:hover { background: var(--surface2); }
     <div class="faq-list">
       <article class="faq-item">
         <strong>How do you calculate required FTE in a call center?</strong>
-        <p>Required FTE is calculated using workload, shrinkage, and occupancy assumptions.</p>
+        <p>Required FTE is calculated using workload, shrinkage, and buffer assumptions. Occupancy is a resulting output metric, not an input to Required FTE.</p>
       </article>
       <article class="faq-item">
         <strong>What is shrinkage in workforce planning?</strong>
@@ -1110,7 +1112,7 @@ tbody tr:hover { background: var(--surface2); }
       </article>
       <article class="faq-item">
         <strong>What is a good occupancy rate?</strong>
-        <p>Typically 80–90% depending on service levels.</p>
+        <p>Typically 75–85% depending on service levels; above 85% raises burnout and SLA risk.</p>
       </article>
     </div>
   </section>
@@ -1235,7 +1237,7 @@ tbody tr:hover { background: var(--surface2); }
       "name": "How do you calculate required FTE in a call center?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Required FTE is calculated using workload, shrinkage, and occupancy assumptions."
+        "text": "Required FTE is calculated using workload, shrinkage, and buffer assumptions. Occupancy is a resulting output metric, not an input to Required FTE."
       }
     },
     {
@@ -1259,7 +1261,7 @@ tbody tr:hover { background: var(--surface2); }
       "name": "What is a good occupancy rate?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Typically 80–90% depending on service levels."
+        "text": "Typically 75–85% depending on service levels; above 85% raises burnout and SLA risk."
       }
     }
   ]
@@ -1281,7 +1283,7 @@ tbody tr:hover { background: var(--surface2); }
     {
       "@type": "HowToStep",
       "name": "Available Capacity",
-      "text": "Adjust paid hours using shrinkage and occupancy."
+      "text": "Convert paid hours into productive hours using shrinkage, then apply the planning buffer to size Required FTE."
     },
     {
       "@type": "HowToStep",
@@ -1358,7 +1360,13 @@ function getEffectiveRamp(inp){
   };
 }
 
-/* ── CORE ENGINE (logic unchanged) ─────────────────────────────── */
+/* ── CORE ENGINE ──────────────────────────────────────────────────
+   Required FTE methodology (single source of truth for this engine):
+     Productive Hours = Paid Hours × (1 − Shrinkage%)
+     Required FTE     = (Workload ÷ Productive Hours) × (1 + Buffer%)
+   Buffer is a planning cushion (forecast error / spike absorption),
+   NOT occupancy. Occupancy is a separate, derived OUTPUT metric — see
+   buildMonthlyPlan() — never an input to Required FTE.               */
 function calcBase(vol,aht,shrinkage,paidHours,buffer,aiDeflection){
   const adjAHT = aiDeflection>20 ? aht*1.15 : aht;
   const workload = (vol*adjAHT)/3600;
@@ -1367,30 +1375,69 @@ function calcBase(vol,aht,shrinkage,paidHours,buffer,aiDeflection){
   const reqFTE = rawFTE*(1+buffer/100);
   return {workload,productiveHours,rawFTE,reqFTE,adjAHT};
 }
-function rampAdjust(newHires,offset,r1,r2,r3){
+
+/* Ramp multiplier for a single cohort of agents at a given plan month.
+   origin=-1 → pre-existing staff, already fully tenured (100% productive).
+   origin>=0 → hired at that month index; ramps through 3 monthly stages
+               relative to hire month: +0 = r1%, +1 = r2%, +2 and beyond
+               = r3% (steady-state / near-full productivity). */
+function rampMultiplierFor(origin,month,r1,r2,r3){
+  if(origin===-1) return 1;
+  const offset=month-origin;
   if(offset<0) return 0;
-  if(offset===0) return newHires*(r1/100);
-  if(offset===1) return newHires*(r2/100);
-  return newHires*(r3/100);
+  if(offset===0) return r1/100;
+  if(offset===1) return r2/100;
+  return r3/100;
 }
+
+/* Monthly headcount/ramp/hiring model.
+   Every physical agent lives in exactly ONE cohort at a time — this is
+   the single source of truth for headcount. A cohort's people are
+   counted once as physicalHC (raw headcount) and once, at their current
+   ramp-stage multiplier, as effectiveHC (productive capacity). They are
+   NEVER added again as full HC in a later month — a 50%-ramped new hire
+   contributes exactly 0.5 FTE of effective capacity, not 1.5, and is
+   never double-counted once they reach full productivity. */
 function buildMonthlyPlan(inp){
   const eR=getEffectiveRamp(inp);
-  const plan=[]; let currentHC=inp.currentHC; const hh=[];
+  const plan=[];
+  let cohorts=[{origin:-1,physicalHC:inp.currentHC}];
+
   for(let m=0;m<6;m++){
     const vol=inp.volume*_scenarioMult;
-    const {workload,reqFTE}=calcBase(vol,inp.aht,inp.shrinkage,inp.paidHours,inp.buffer,inp.aiDeflection);
-    const attritionLoss=Math.round(currentHC*(inp.attrition/100));
-    let tenuredHC=Math.max(0,currentHC-attritionLoss);
-    let rampContrib=0;
-    for(const h of hh) rampContrib+=rampAdjust(h.count,m-h.month,eR.r1,eR.r2,eR.r3);
-    const effectiveHC=tenuredHC+rampContrib;
-    const occupancy=effectiveHC>0?(workload/(effectiveHC*inp.paidHours))*100:999;
+    const {workload,productiveHours,reqFTE}=calcBase(vol,inp.aht,inp.shrinkage,inp.paidHours,inp.buffer,inp.aiDeflection);
+
+    // Attrition applies to every live cohort — tenured and still-ramping agents alike.
+    const totalBefore=cohorts.reduce((s,c)=>s+c.physicalHC,0);
+    cohorts=cohorts.map(c=>({...c,physicalHC:c.physicalHC*(1-inp.attrition/100)}));
+    const totalAfter=cohorts.reduce((s,c)=>s+c.physicalHC,0);
+    const attritionLoss=Math.round(totalBefore-totalAfter);
+
+    // physicalHC: raw headcount (every agent counted once).
+    // effectiveHC: that same headcount weighted by each cohort's ramp stage.
+    let physicalHC=0, effectiveHC=0;
+    cohorts.forEach(c=>{
+      physicalHC+=c.physicalHC;
+      effectiveHC+=c.physicalHC*rampMultiplierFor(c.origin,m,eR.r1,eR.r2,eR.r3);
+    });
+
+    // Occupancy = Workload ÷ (Effective HC × Productive Hours) × 100.
+    // Uses Productive Hours (post-shrinkage available time), not raw Paid
+    // Hours, since occupancy measures utilization of time actually
+    // available to handle work.
+    const occupancy=effectiveHC>0?(workload/(effectiveHC*productiveHours))*100:999;
     const gap=Math.ceil(reqFTE)-Math.round(effectiveHC);
-    const hiring=Math.max(0,gap>0?gap:0);
-    plan.push({month:m,volume:vol,workload,reqFTE:Math.ceil(reqFTE),attritionLoss,
-      effectiveHC:Math.round(effectiveHC),occupancy,gap,hiring,tenuredHC:Math.round(tenuredHC)});
-    if(hiring>0) hh.push({month:m,count:hiring});
-    currentHC=Math.max(0,tenuredHC)+hiring;
+    const hiring=Math.max(0,gap);
+
+    plan.push({
+      month:m,volume:vol,workload,reqFTE:Math.ceil(reqFTE),attritionLoss,
+      physicalHC:Math.round(physicalHC),
+      effectiveHC:Math.round(effectiveHC),
+      tenuredHC:Math.round(physicalHC), // kept for backward compatibility; equals physical (non-ramp-adjusted) HC
+      occupancy,gap,hiring
+    });
+
+    if(hiring>0) cohorts.push({origin:m,physicalHC:hiring});
   }
   return plan;
 }
@@ -1445,11 +1492,15 @@ function computeDriverWaterfall(baseInp,curInp){
   applyStep2('Ramp',['ramp1','ramp2','ramp3','hw'],[curInp.ramp1,curInp.ramp2,curInp.ramp3,curInp.hw]);
   const hireAfter=cumHire(curInp);
 
-  const allSteps=[...fteSteps,...hireSteps];
-  let biggest={label:'None',impact:0};
-  allSteps.forEach(s=>{ if(Math.abs(s.impact)>Math.abs(biggest.impact)) biggest=s; });
+  // Requirement drivers (FTE) and hiring drivers (headcount) are different
+  // units — never combined into a single "biggest driver" comparison.
+  // Each category gets its own biggest-driver readout.
+  let biggestFTE={label:'None',impact:0};
+  fteSteps.forEach(s=>{ if(Math.abs(s.impact)>Math.abs(biggestFTE.impact)) biggestFTE=s; });
+  let biggestHire={label:'None',impact:0};
+  hireSteps.forEach(s=>{ if(Math.abs(s.impact)>Math.abs(biggestHire.impact)) biggestHire=s; });
 
-  return {fteSteps,reqFTEBefore:b0,reqFTEAfter,hireSteps,hireBefore:h0,hireAfter,biggest};
+  return {fteSteps,reqFTEBefore:b0,reqFTEAfter,hireSteps,hireBefore:h0,hireAfter,biggestFTE,biggestHire};
 }
 
 function renderReplan(inp){
@@ -1486,15 +1537,36 @@ function renderReplan(inp){
   wf.innerHTML=`
     <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Required FTE changed ${reqBefore} → ${reqAfter}</div>
     <div class="driver-list">${dw.fteSteps.map(s=>rowHtml(s,'FTE')).join('')}</div>
+    <div style="margin-top:8px;font-size:12px;color:var(--text2);">Biggest requirement driver: <strong style="color:var(--text)">${dw.biggestFTE.label}</strong> (${dw.biggestFTE.impact>=0?'+':''}${dw.biggestFTE.impact.toFixed(1)} FTE). Sequential-substitution estimate — order-dependent, not exact attribution.</div>
     <div style="font-size:11px;color:var(--text3);margin:18px 0 8px;">6-Month cumulative hiring need changed ${Math.ceil(dw.hireBefore)} → ${Math.ceil(dw.hireAfter)}</div>
     <div class="driver-list">${dw.hireSteps.map(s=>rowHtml(s,'hires')).join('')}</div>
-    <div style="margin-top:16px;font-size:12px;color:var(--text2);">Biggest driver: <strong style="color:var(--text)">${dw.biggest.label}</strong> (estimated ${dw.biggest.impact>=0?'+':''}${dw.biggest.impact.toFixed(1)}). Sequential-substitution estimate — order-dependent, not exact attribution.</div>`;
+    <div style="margin-top:8px;font-size:12px;color:var(--text2);">Biggest hiring driver: <strong style="color:var(--text)">${dw.biggestHire.label}</strong> (${dw.biggestHire.impact>=0?'+':''}${dw.biggestHire.impact.toFixed(1)} hires). Requirement drivers (FTE) and hiring drivers (headcount) are different units and are never compared directly.</div>`;
+}
+
+/* Days until a new hire reaches near-full productivity, derived from the
+   ramp model actually in effect (manual r1/r2/r3, or the historical weekly
+   cohort curve) — NOT a fixed constant. Changing ramp assumptions changes
+   this number, which in turn changes the recommended action date. */
+function computeRampDaysToFull(inp){
+  const eR=getEffectiveRamp(inp);
+  const threshold=eR.r3*0.95; // "near-full" relative to this model's own steady-state ramp %
+  if(eR.source==='historical'){
+    const hw=inp.hw||[];
+    for(let w=0;w<6;w++){
+      if(hw[w]!==null && hw[w]!==undefined && !isNaN(hw[w]) && hw[w]>=threshold) return (w+1)*7;
+    }
+    return 60; // observed cohort never reached steady-state productivity in the 6-week window; falls back to this model's month-3 assumption
+  }
+  // Manual mode: 3 monthly stages relative to hire month — 0 = r1%, 30 = r2%, 60 = r3% (steady state)
+  if(eR.r1>=threshold) return 0;
+  if(eR.r2>=threshold) return 30;
+  return 60;
 }
 
 /* ── RECOMMENDED ACTION (Action Date / Decision Layer) ──────────── */
 function computeRecommendedAction(inp,gap0,plan){
   const today=new Date();
-  const RAMP_DAYS=60; // ramp reaches ramp3(full productivity) by start of month 3 in this model
+  const rampDays=computeRampDaysToFull(inp);
   const leadDays=Math.round(inp.leadTime*30);
   const firstGapMonth=plan.findIndex(r=>r.hiring>0);
   if(gap0<=0 && firstGapMonth===-1){
@@ -1502,9 +1574,9 @@ function computeRecommendedAction(inp,gap0,plan){
   }
   const gapMonthIdx=gap0>0?0:firstGapMonth;
   const gapDate=new Date(today); gapDate.setDate(gapDate.getDate()+gapMonthIdx*30);
-  const actionDate=new Date(gapDate); actionDate.setDate(actionDate.getDate()-(leadDays+RAMP_DAYS));
+  const actionDate=new Date(gapDate); actionDate.setDate(actionDate.getDate()-(leadDays+rampDays));
   const overdue=actionDate<today;
-  return {hasGap:true,gapDate,actionDate,leadDays,rampDays:RAMP_DAYS,overdue,gapFTE:gap0>0?Math.ceil(gap0):plan[firstGapMonth].hiring};
+  return {hasGap:true,gapDate,actionDate,leadDays,rampDays,overdue,gapFTE:gap0>0?Math.ceil(gap0):plan[firstGapMonth].hiring};
 }
 function renderRecommendedAction(inp,gap0,plan){
   const a=computeRecommendedAction(inp,gap0,plan);
@@ -1530,7 +1602,8 @@ function renderDecisionSummary(inp,gap0,reqFTE,plan,dw,action){
     <div class="ec-eyebrow" style="font-size:11px;">Plan Status</div>
     <div class="decision-grid">
       <div class="decision-item"><div class="dc-lbl">Capacity</div><div class="dc-val" style="color:${gap0>0?'var(--red)':gap0<0?'var(--green)':'var(--text)'}">${status}</div></div>
-      <div class="decision-item"><div class="dc-lbl">Primary Driver</div><div class="dc-val">${dw.biggest.label}</div></div>
+      <div class="decision-item"><div class="dc-lbl">Primary Requirement Driver</div><div class="dc-val">${dw.biggestFTE.label}</div></div>
+      <div class="decision-item"><div class="dc-lbl">Primary Hiring Driver</div><div class="dc-val">${dw.biggestHire.label}</div></div>
       <div class="decision-item"><div class="dc-lbl">Gap Appears</div><div class="dc-val">${gapAppears}</div></div>
       <div class="decision-item"><div class="dc-lbl">Action Required</div><div class="dc-val" style="color:${actionReq==='Yes'?'var(--amber)':'var(--green)'}">${actionReq}</div></div>
       <div class="decision-item"><div class="dc-lbl">Recommended Action</div><div class="dc-val">${recAction}</div></div>
@@ -1615,7 +1688,8 @@ function _renderAll(inp){
   const inpAdj = {...inp, volume: vol};
   const {workload,productiveHours,reqFTE,adjAHT} = calcBase(vol,inp.aht,inp.shrinkage,inp.paidHours,inp.buffer,inp.aiDeflection);
   const eff0 = inp.currentHC;
-  const occ0 = eff0>0?(workload/(eff0*inp.paidHours))*100:0;
+  // Occupancy uses Productive Hours (post-shrinkage), not raw Paid Hours — see calcBase().
+  const occ0 = eff0>0?(workload/(eff0*productiveHours))*100:0;
   const gap0 = Math.ceil(reqFTE)-eff0;
   const plan = buildMonthlyPlan(inp);
 
@@ -1637,7 +1711,7 @@ function _renderAll(inp){
   const action=computeRecommendedAction(inp,gap0,plan);
   renderRecommendedAction(inp,gap0,plan);
   const baselineForDW=loadBaseline();
-  const dw=baselineForDW?computeDriverWaterfall(baselineForDW.inputs,inp):{biggest:{label:'None (no baseline pinned yet)',impact:0}};
+  const dw=baselineForDW?computeDriverWaterfall(baselineForDW.inputs,inp):{biggestFTE:{label:'None (no baseline pinned yet)',impact:0},biggestHire:{label:'None (no baseline pinned yet)',impact:0}};
   renderDecisionSummary(inp,gap0,reqFTE,plan,dw,action);
 }
 
@@ -1715,7 +1789,7 @@ const KPI_TIPS = {
   'Required FTE':    'FTE needed including buffer & shrinkage. Formula: (Workload ÷ Prod.Hrs) × (1 + Buffer%).',
   'Effective HC':    'Ramp-adjusted headcount actually available for calls right now.',
   'Capacity Gap':    'Required FTE minus Effective HC. Positive = deficit (hire). Negative = surplus (optimize).',
-  'Occupancy':       'Workload ÷ (HC × Paid Hours) × 100. Safe band: 75–85%. Above 85% = burnout risk.',
+  'Occupancy':       'Workload ÷ (Effective HC × Productive Hours) × 100. Safe band: 75–85%. Above 85% = burnout risk.',
   'Prod. Hours':     'Paid Hours × (1 − Shrinkage%). Hours an agent is actually available to take calls.',
   'Shrinkage':       'Non-productive paid time per agent. Breaks + absence + training. Raises required FTE.',
   'Monthly Cost':    'Effective HC × Cost per FTE. Total payroll for current headcount.',
@@ -1729,7 +1803,7 @@ function renderKPIs(inp,workload,productiveHours,reqFTE,effHC,gap,occ,adjAHT){
     {label:'Capacity Gap',  value:(gap>0?'+':'')+Math.round(gap)+' FTE', meta:gap>0?'Deficit — hire now':'Surplus — optimize',
      formula:`Req ${Math.ceil(reqFTE)} − Eff ${effHC}`, cls:gap>0?'kpi-red':'kpi-green'},
     {label:'Occupancy',     value:fmtPct(occ), meta:occ>85?'Risk Band: HIGH':'Risk Band: NORMAL',
-     formula:`WL÷(HC×PaidHrs)×100`, cls:occ>90?'kpi-red':occ>80?'kpi-amber':'kpi-green'},
+     formula:`WL÷(HC×Prod.Hrs)×100`, cls:occ>90?'kpi-red':occ>80?'kpi-amber':'kpi-green'},
     {label:'Prod. Hours',   value:fmt(productiveHours,1), meta:'Per agent per month', formula:`${inp.paidHours}h×(1−${inp.shrinkage}%)`, cls:''},
     {label:'Shrinkage',     value:fmt(inp.paidHours*(inp.shrinkage/100),1)+' hrs', meta:'Lost per agent/month', formula:`${inp.paidHours}h×${inp.shrinkage}%`, cls:''},
     {label:'Monthly Cost',  value:fmtK(effHC*inp.costFTE), meta:'Current HC cost', formula:`${effHC}×₹${fmt(inp.costFTE)}`, cls:''},
@@ -1987,7 +2061,7 @@ function renderFormulas(inp,workload,productiveHours,reqFTE,adjAHT){
     {q:'How is FTE calculated?',         eq:'FTE = (Workload ÷ Prod. Hours) × (1 + Buffer%)',  a:`Workload=${fmt(workload,0)}h, Prod.Hrs=${fmt(productiveHours,1)}h. Result: ${Math.ceil(reqFTE)} FTE required.`},
     {q:'What is Workload?',              eq:'Workload = (Volume × AHT) ÷ 3600',                a:`${fmt(inp.volume*_scenarioMult,0)} calls × ${adjAHT}s ÷ 3600 = ${fmt(workload,0)} agent-hours/month.`},
     {q:'Why does shrinkage matter?',     eq:'Prod. Hours = Paid Hours × (1 − Shrinkage%)',      a:`At ${inp.shrinkage}%, each agent delivers ${fmt(productiveHours,1)} of ${inp.paidHours} paid hours. The #1 understaffing cause in BPO.`},
-    {q:'What does occupancy mean?',      eq:'Occupancy = Workload ÷ (HC × Paid Hours) × 100',  a:`75–85% is optimal. Above 85% = burnout + SLA risk. Below 70% = idle cost.`},
+    {q:'What does occupancy mean?',      eq:'Occupancy = Workload ÷ (Effective HC × Productive Hours) × 100',  a:`75–85% is optimal. Above 85% = burnout + SLA risk. Below 70% = idle cost.`},
     {q:'How does ramp affect capacity?', eq:'Eff. HC = Tenured HC + Σ(Hires × Ramp%)',         a:`Ramp ${inp.ramp1}%→${inp.ramp2}%→${inp.ramp3}%. Hire today = ${inp.ramp1}% productive in M1. Plan beyond paper headcount.`},
     {q:'What is attrition cost?',        eq:'Monthly Loss = HC × Attrition%',                  a:`${inp.attrition}%/month = ${Math.round(inp.currentHC*inp.attrition/100)} agents lost/month. Must model continuously.`},
   ];
@@ -2046,6 +2120,114 @@ window.addEventListener('resize',()=>{
   clearTimeout(_resizeTimer);
   _resizeTimer=setTimeout(()=>{ if(_lastInp){ const plan=buildMonthlyPlan(_lastInp); renderCharts(plan); } },200);
 });
+
+/* ── INTERNAL VALIDATION SUITE (console only — no UI, no new features) ──
+   Runs once automatically on load. Confirms the ramp/headcount model
+   never double-counts an agent and that key scenarios behave correctly.
+   Open devtools console to inspect results. */
+function runValidationSuite(){
+  const baseInp={volume:55000,aht:300,shrinkage:30,paidHours:160,buffer:30,
+    currentHC:65,attrition:5,leadTime:2,costFTE:50000,aiDeflection:0,
+    ramp1:50,ramp2:70,ramp3:100,hw:[null,null,null,null,null,null]};
+  const results=[];
+  const check=(name,cond,detail)=>results.push({name,pass:!!cond,detail});
+
+  // Core invariant, checked in every scenario: effective (ramp-adjusted)
+  // HC can never exceed physical (raw) HC, since ramp multipliers are
+  // always ≤1. Any double-count of an agent breaks this immediately.
+  const invariantHolds=plan=>plan.every(r=>r.effectiveHC<=r.physicalHC+0.5);
+
+  // 1. No hires needed
+  {
+    const inp={...baseInp,currentHC:5000,volume:1000};
+    const plan=buildMonthlyPlan(inp);
+    check('No hires: hiring is zero in every month',plan.every(r=>r.hiring===0));
+    check('No hires: effHC ≤ physicalHC invariant holds',invariantHolds(plan));
+  }
+
+  // 2. 10 hires at 50% ramp — must contribute 5.0 effective FTE, not 10 or 15
+  {
+    const inp={...baseInp,currentHC:0,volume:10000,attrition:0,ramp1:50,ramp2:50,ramp3:50};
+    const plan=buildMonthlyPlan(inp);
+    const hiredM0=plan[0].hiring;
+    if(hiredM0>0 && plan.length>1){
+      const expectedEff=hiredM0*(inp.ramp2/100);
+      check('10 hires @ 50% ramp: cohort contributes ramp% only (not 100%+ramp%, not double)',
+        Math.abs(plan[1].effectiveHC-Math.round(expectedEff))<=1,
+        `hired=${hiredM0}, expected≈${expectedEff.toFixed(1)}, got=${plan[1].effectiveHC}`);
+    }
+    check('50% ramp: effHC ≤ physicalHC invariant holds',invariantHolds(plan));
+  }
+
+  // 3. 10 hires reaching 70% then 100% (staged ramp)
+  {
+    const inp={...baseInp,currentHC:0,volume:20000,ramp1:0,ramp2:70,ramp3:100};
+    const plan=buildMonthlyPlan(inp);
+    check('Staged ramp (0→70→100): effHC ≤ physicalHC invariant holds',invariantHolds(plan));
+  }
+
+  // 4. High attrition
+  {
+    const inp={...baseInp,attrition:25,currentHC:100,volume:1};
+    const plan=buildMonthlyPlan(inp);
+    check('High attrition: physical HC shrinks month over month',plan[5].physicalHC<plan[0].physicalHC);
+    check('High attrition: effHC ≤ physicalHC invariant holds',invariantHolds(plan));
+  }
+
+  // 5. Zero gap
+  {
+    const reqCheck=calcBase(baseInp.volume,baseInp.aht,baseInp.shrinkage,baseInp.paidHours,baseInp.buffer,baseInp.aiDeflection).reqFTE;
+    const inp={...baseInp,currentHC:Math.ceil(reqCheck),attrition:0};
+    const plan=buildMonthlyPlan(inp);
+    check('Zero gap: no hiring triggered in month 1',plan[0].hiring===0,`gap=${plan[0].gap}`);
+  }
+
+  // 6. Positive gap
+  {
+    const inp={...baseInp,currentHC:10,attrition:0};
+    const plan=buildMonthlyPlan(inp);
+    check('Positive gap: hiring triggered in month 1',plan[0].hiring>0);
+  }
+
+  // 7. Historical ramp enabled
+  {
+    const inp={...baseInp,hw:[35,48,58,65,80,92]};
+    const eR=getEffectiveRamp(inp);
+    check('Historical ramp: source flagged as historical',eR.source==='historical');
+    check('Historical ramp: r1/r2/r3 derived from weekly data, not manual inputs',
+      Math.abs(eR.r1-((35+48+58+65)/4))<0.01 && Math.abs(eR.r2-((80+92)/2))<0.01 && eR.r3>=90);
+    check('Historical ramp: effHC ≤ physicalHC invariant holds',invariantHolds(buildMonthlyPlan(inp)));
+  }
+
+  // 8. Manual ramp enabled
+  {
+    const inp={...baseInp,hw:[null,null,null,null,null,null]};
+    const eR=getEffectiveRamp(inp);
+    check('Manual ramp: source flagged as manual',eR.source==='manual');
+    check('Manual ramp: uses manual ramp1/2/3 inputs directly',
+      eR.r1===inp.ramp1 && eR.r2===inp.ramp2 && eR.r3===inp.ramp3);
+  }
+
+  // 9. Action date responds to the ramp model, not a hardcoded constant
+  {
+    const fastInp={...baseInp,ramp1:96,ramp2:98,ramp3:100};
+    const slowInp={...baseInp,ramp1:20,ramp2:40,ramp3:100};
+    const fastDays=computeRampDaysToFull(fastInp), slowDays=computeRampDaysToFull(slowInp);
+    check('Action date: ramp days shrink when hires start highly productive',
+      fastDays<slowDays,`fast=${fastDays}d, slow=${slowDays}d`);
+    check('Action date: slow ramp still bounded at the model max (60d)',slowDays===60);
+  }
+
+  const failed=results.filter(r=>!r.pass);
+  console.groupCollapsed(`WFM Capacity Planning Engine — validation suite: ${results.length-failed.length}/${results.length} passed`);
+  results.forEach(r=>{
+    if(r.pass) console.log('%cPASS','color:#3ECF8E;font-weight:600;',r.name);
+    else console.error('FAIL',r.name,r.detail||'');
+  });
+  console.groupEnd();
+  return {results,passed:results.length-failed.length,failed:failed.length};
+}
+try{ runValidationSuite(); }catch(e){ console.error('WFM CPE validation suite threw an error:',e); }
 </script>
 </body>
 </html>
