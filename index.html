@@ -1679,8 +1679,9 @@ function stalenessOf(dateStr){
    Auto-logged whenever an assumption's displayed value actually changes
    (deduped against the last entry) — no fabricated data. If a person has
    never run the engine before, or an assumption has never changed, the
-   log is empty and the modal shows a clearly labeled sample/demo state
-   instead of inventing history. People can also add entries manually. */
+   log is empty and the modal shows a true empty state instead of ever
+   inventing sample/demo history. People can also add entries manually,
+   and each row is labeled System-recorded or Manual entry. */
 const ASSUMPTION_HISTORY_KEY='wfmcpe_assumption_history_v1';
 const ASSUMPTION_HISTORY_LABEL={volume:'Volume',aht:'AHT',shrinkage:'Shrinkage',attrition:'Attrition',buffer:'Productivity (Buffer)',ramp:'Ramp Curve'};
 function loadAssumptionHistory(){
@@ -1697,7 +1698,7 @@ function logAssumptionHistorySnapshot(inp,meta){
     if(!h[k]) h[k]=[];
     const last=h[k][h[k].length-1];
     if(!last || last.value!==vals[k]){
-      h[k].push({date:today,value:vals[k],owner:(meta[k]&&meta[k].owner)||'Unassigned',status:'Validated'});
+      h[k].push({date:today,value:vals[k],owner:(meta[k]&&meta[k].owner)||'Unassigned',status:'Validated',source:'system'});
       changed=true;
     }
   });
@@ -1710,30 +1711,34 @@ function addManualHistoryEntry(key){
   const owner=(document.getElementById('hist_owner_'+key).value||'Unassigned').trim();
   const h=loadAssumptionHistory();
   if(!h[key]) h[key]=[];
-  h[key].push({date,value:val,owner,status:'Manual entry'});
+  h[key].push({date,value:val,owner,status:'Pending review',source:'manual'});
   saveAssumptionHistory(h);
   showHistory(key);
 }
+/* Real entries only — never backfilled with fabricated/sample rows. Older
+   entries saved before the source field existed are treated as system-
+   recorded, since they came from logAssumptionHistorySnapshot(). */
 function showHistory(key){
   const h=loadAssumptionHistory();
   const real=(h[key]||[]).slice().sort((a,b)=>a.date.localeCompare(b.date));
   const label=ASSUMPTION_HISTORY_LABEL[key]||key;
-  const isDemo=real.length===0;
-  const demoRows=[
-    {date:'2026-03-01',value:'30%',owner:'WFM',status:'Validated (sample)'},
-    {date:'2026-05-01',value:'32%',owner:'WFM',status:'Validated (sample)'},
-    {date:'2026-07-01',value:'35%',owner:'WFM',status:'Validated (sample)'},
-    {date:new Date().toISOString().slice(0,10),value:'38%',owner:'WFM',status:'Pending review (sample)'}
-  ];
-  const rows=isDemo?demoRows:real;
   document.getElementById('historyModalTitle').textContent=`${label} — History`;
+  const emptyState=`
+    <div class="pill pill-manual" style="margin-bottom:12px;">No historical changes recorded yet.</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">History will appear as assumptions are changed or manually logged.</div>`;
+  const tableHtml=`
+    <div class="table-wrap"><table>
+      <thead><tr><th style="text-align:left;">Effective Date</th><th>Value</th><th>Owner</th><th>Validation Status</th><th>Source</th></tr></thead>
+      <tbody>${real.map(r=>{
+        const src=r.source||'system';
+        const srcCls=src==='manual'?'pill-manual':'pill-hist';
+        const srcLabel=src==='manual'?'Manual entry':'System-recorded';
+        return `<tr><td>${r.date}</td><td>${r.value}</td><td>${r.owner}</td><td>${r.status}</td><td><span class="pill ${srcCls}" style="padding:3px 8px;font-size:9px;">${srcLabel}</span></td></tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
   document.getElementById('historyModalBody').innerHTML=`
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">What changed, when, who owns it, and how fresh is it — for <strong style="color:var(--text)">${label}</strong>.</div>
-    ${isDemo?`<div class="pill pill-manual" style="margin-bottom:12px;">Sample / demo data — no real change history recorded yet for this assumption</div>`:''}
-    <div class="table-wrap"><table>
-      <thead><tr><th style="text-align:left;">Effective Date</th><th>Value</th><th>Owner</th><th>Validation Status</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr><td>${r.date}</td><td>${r.value}</td><td>${r.owner}</td><td>${r.status}</td></tr>`).join('')}</tbody>
-    </table></div>
+    ${real.length===0?emptyState:tableHtml}
     <div style="margin-top:18px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;">Add entry manually</div>
     <div class="input-grid" style="grid-template-columns:1fr 1fr 1fr auto;margin-top:8px;margin-bottom:0;">
       <div class="field"><label class="field-label">Value</label><input class="drift-input" id="hist_val_${key}" placeholder="e.g. 38%"/></div>
@@ -2879,15 +2884,15 @@ function runValidationSuite(){
    formula change. Fully separate from the single-queue 6-month engine
    above; does not read or alter any of its state. */
 let _queues=[
-  {id:'q_voice',name:'Voice',volume:8000,aht:300,shrinkage:30,buffer:15,paidHoursWeek:40,availableFTE:60,volGrowthPct:0,crossSkillPct:15},
-  {id:'q_chat', name:'Chat', volume:5000,aht:420,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:25,volGrowthPct:0,crossSkillPct:30},
-  {id:'q_email',name:'Email',volume:3000,aht:240,shrinkage:20,buffer:10,paidHoursWeek:40,availableFTE:12,volGrowthPct:0,crossSkillPct:30},
-  {id:'q_bo',   name:'Back Office',volume:2000,aht:600,shrinkage:15,buffer:10,paidHoursWeek:40,availableFTE:15,volGrowthPct:0,crossSkillPct:10}
+  {id:'q_voice',name:'Voice',volume:8000,aht:300,shrinkage:30,buffer:15,paidHoursWeek:40,availableFTE:60,volGrowthPct:0,crossSkillPct:15,actualVol:{}},
+  {id:'q_chat', name:'Chat', volume:5000,aht:420,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:25,volGrowthPct:0,crossSkillPct:30,actualVol:{}},
+  {id:'q_email',name:'Email',volume:3000,aht:240,shrinkage:20,buffer:10,paidHoursWeek:40,availableFTE:12,volGrowthPct:0,crossSkillPct:30,actualVol:{}},
+  {id:'q_bo',   name:'Back Office',volume:2000,aht:600,shrinkage:15,buffer:10,paidHoursWeek:40,availableFTE:15,volGrowthPct:0,crossSkillPct:10,actualVol:{}}
 ];
 let _mqWeeks=4;
 
 function addQueue(){
-  _queues.push({id:'q_'+Date.now(),name:'New Queue',volume:1000,aht:300,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:10,volGrowthPct:0,crossSkillPct:0});
+  _queues.push({id:'q_'+Date.now(),name:'New Queue',volume:1000,aht:300,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:10,volGrowthPct:0,crossSkillPct:0,actualVol:{}});
   renderQueuesModule();
 }
 function removeQueue(id){
@@ -2897,6 +2902,18 @@ function removeQueue(id){
 function updateQueueField(id,field,value,isNumber){
   const q=_queues.find(x=>x.id===id); if(!q) return;
   q[field]=isNumber?(parseFloat(value)||0):value;
+  renderQueuesModule();
+}
+/* Marks a specific week's volume as Actual (entered/known) rather than
+   Projected (derived from current inputs + growth assumption). Clearing
+   the field reverts that week back to Projected — never silently mixes
+   the two without labeling which is which. */
+function updateQueueActual(id,weekNum,value){
+  const q=_queues.find(x=>x.id===id); if(!q) return;
+  if(!q.actualVol) q.actualVol={};
+  const v=(value||'').toString().trim();
+  if(v===''){ delete q.actualVol[weekNum]; }
+  else { q.actualVol[weekNum]=parseFloat(v)||0; }
   renderQueuesModule();
 }
 function setMQWeeks(n,btn){
@@ -2911,14 +2928,20 @@ function setMQWeeks(n,btn){
    which is enough to demonstrate a genuine week-on-week view without
    overcrowding the UI with a driver per metric; AHT/shrinkage/buffer/
    available FTE are held flat across the window (still fully editable —
-   they just apply to every week until changed). */
+   they just apply to every week until changed).
+   Every week is Projected (derived from current inputs/growth assumption)
+   UNLESS a real Actual volume has been entered for that week — in which
+   case the actual figure is used and the week is labeled Actual. This
+   never implies these are historical actual weeks by default. */
 function computeQueueWeeks(q,weeksN){
   const weeks=[];
   for(let w=0;w<weeksN;w++){
-    const vol=q.volume*Math.pow(1+(q.volGrowthPct||0)/100,w);
+    const weekNum=w+1;
+    const hasActual=q.actualVol && q.actualVol[weekNum]!==undefined;
+    const vol=hasActual?q.actualVol[weekNum]:q.volume*Math.pow(1+(q.volGrowthPct||0)/100,w);
     const {reqFTE}=calcBase(vol,q.aht,q.shrinkage,q.paidHoursWeek||40,q.buffer||0,0);
     const gap=Math.ceil(reqFTE)-Math.round(q.availableFTE||0);
-    weeks.push({week:w+1,volume:vol,aht:q.aht,reqFTE,availableFTE:q.availableFTE||0,gap});
+    weeks.push({week:weekNum,volume:vol,aht:q.aht,reqFTE,availableFTE:q.availableFTE||0,gap,isActual:hasActual});
   }
   return weeks;
 }
@@ -2979,19 +3002,22 @@ function renderQueuesModule(){
     </div>
     <div style="margin-top:10px;font-size:11px;color:var(--text3);">Transparent allocation model, not an optimizer: surplus queues can lend up to their own Available FTE × Cross-Skilled Capacity %. Does not model cross-training time, skill-fit, or scheduling constraints.</div>`;
 
-  // Per-queue week-on-week table.
+  // Per-queue week-on-week table. Weeks are Projected (derived from
+  // current inputs + growth assumption) unless a real Actual volume has
+  // been entered for that week — never implied to be historical actuals.
   tablesEl.innerHTML=allWeeks.map(({q,weeks})=>{
     const driftNote=q.volGrowthPct?`Volume growth ${q.volGrowthPct>0?'+':''}${q.volGrowthPct}%/wk`:'Flat volume/AHT assumption across weeks';
     return `<div class="table-card" style="margin-bottom:16px;">
-      <div class="table-head-row"><div><div class="table-head-title">${q.name} — Week-on-Week</div><div class="table-head-sub">${driftNote}</div></div></div>
+      <div class="table-head-row"><div><div class="table-head-title">${q.name} — Week-on-Week</div><div class="table-head-sub">Projected weeks, from current inputs and growth assumption — ${driftNote}. Enter an Actual Volume below to override a specific week.</div></div></div>
       <div class="table-wrap"><table>
-        <thead><tr><th style="text-align:left;">Week</th>${weeks.map(w=>`<th>W${w.week}</th>`).join('')}</tr></thead>
+        <thead><tr><th style="text-align:left;">Week</th>${weeks.map(w=>`<th>W${w.week}<br/><span class="pill ${w.isActual?'pill-hist':'pill-manual'}" style="padding:2px 7px;font-size:8px;margin-top:3px;">${w.isActual?'Actual':'Projected'}</span></th>`).join('')}</tr></thead>
         <tbody>
           <tr><td>Volume</td>${weeks.map(w=>`<td>${Math.round(w.volume).toLocaleString()}</td>`).join('')}</tr>
           <tr><td>AHT (s)</td>${weeks.map(w=>`<td>${Math.round(w.aht)}</td>`).join('')}</tr>
           <tr><td>Required FTE</td>${weeks.map(w=>`<td>${Math.ceil(w.reqFTE)}</td>`).join('')}</tr>
           <tr><td>Available FTE</td>${weeks.map(w=>`<td>${Math.round(w.availableFTE)}</td>`).join('')}</tr>
           <tr><td>Gap / Surplus</td>${weeks.map(w=>`<td class="${w.gap>0?'td-neg':w.gap<0?'td-pos':'td-dim'}">${w.gap>0?'+':''}${w.gap}</td>`).join('')}</tr>
+          <tr><td>Actual Volume<br/><span style="color:var(--text3);font-weight:400;">(optional)</span></td>${weeks.map(w=>`<td><input class="drift-input" type="number" placeholder="—" value="${w.isActual?Math.round(w.volume):''}" style="max-width:90px;" onchange="updateQueueActual('${q.id}',${w.week},this.value)"/></td>`).join('')}</tr>
         </tbody>
       </table></div>
     </div>`;
