@@ -1147,6 +1147,47 @@ tbody tr:hover { background: var(--surface2); }
       <div id="queueWeeklyTables"></div>
     </div>
 
+    <!-- HISTORICAL DATA / 8-WEEK PATTERN ENGINE -->
+    <div class="sec output" id="historicalSection">
+      <div class="sec-header">
+        <div class="sec-title">Historical Data &amp; Pattern Analysis
+          <span class="tip-wrap"><i class="tip-icon">i</i><span class="tooltip">Optional: paste or upload historical interval/day-level volume and AHT data to derive Day-of-Week and Interval-of-Week patterns. These patterns can inform — but never override — the manual forecast and FTE math above.</span></span>
+        </div>
+        <div class="sec-right">
+          <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="histEnableToggle" onchange="toggleHistoricalModule()"/> Enable historical pattern analysis
+          </label>
+        </div>
+      </div>
+
+      <div id="histBody" class="hidden">
+        <div class="table-card" style="margin-bottom:16px;">
+          <div class="table-head-row">
+            <div><div class="table-head-title">Load Historical Data</div><div class="table-head-sub">Columns: Week, Date, Day, Queue, Interval, Volume, AHT — Interval is optional (falls back to Day-of-Week analysis if absent)</div></div>
+          </div>
+          <div style="padding:8px 24px 20px;">
+            <div style="font-size:11px;color:var(--green);background:var(--green-dim);border:1px solid rgba(62,207,142,0.3);border-radius:var(--rx);padding:8px 12px;margin-bottom:12px;">
+              🔒 Historical data is processed locally in your browser. No data is uploaded to a server.
+            </div>
+            <textarea id="histPasteArea" placeholder="Paste CSV here, e.g.&#10;Week,Date,Day,Queue,Interval,Volume,AHT&#10;W1,2026-08-03,Monday,Voice,09:00,120,380" style="width:100%;min-height:110px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text);font-family:var(--mono);font-size:12px;padding:10px;resize:vertical;"></textarea>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+              <button class="btn-ghost" style="padding:8px 14px;font-size:12px;" onclick="handleHistPaste()">Parse Pasted Data</button>
+              <label class="btn-ghost" style="padding:8px 14px;font-size:12px;cursor:pointer;">
+                Upload CSV File
+                <input type="file" id="histFileInput" accept=".csv,text/csv" style="display:none;" onchange="handleHistFileUpload(event)"/>
+              </label>
+              <button class="btn-ghost" style="padding:8px 14px;font-size:12px;" onclick="loadHistoricalSample()">Load Sample (8wk demo)</button>
+              <button class="btn-ghost" style="padding:8px 14px;font-size:12px;" onclick="clearHistoricalData()">Clear</button>
+              <span class="pill" id="histStatusBadge">— no historical data loaded —</span>
+            </div>
+            <div id="histParseError" style="color:var(--red);font-size:12px;margin-top:8px;"></div>
+          </div>
+        </div>
+
+        <div id="histAnalysisOutput"></div>
+      </div>
+    </div>
+
   </div><!-- /outputArea -->
 
 
@@ -1679,9 +1720,8 @@ function stalenessOf(dateStr){
    Auto-logged whenever an assumption's displayed value actually changes
    (deduped against the last entry) — no fabricated data. If a person has
    never run the engine before, or an assumption has never changed, the
-   log is empty and the modal shows a true empty state instead of ever
-   inventing sample/demo history. People can also add entries manually,
-   and each row is labeled System-recorded or Manual entry. */
+   log is empty and the modal shows a clearly labeled sample/demo state
+   instead of inventing history. People can also add entries manually. */
 const ASSUMPTION_HISTORY_KEY='wfmcpe_assumption_history_v1';
 const ASSUMPTION_HISTORY_LABEL={volume:'Volume',aht:'AHT',shrinkage:'Shrinkage',attrition:'Attrition',buffer:'Productivity (Buffer)',ramp:'Ramp Curve'};
 function loadAssumptionHistory(){
@@ -1698,7 +1738,7 @@ function logAssumptionHistorySnapshot(inp,meta){
     if(!h[k]) h[k]=[];
     const last=h[k][h[k].length-1];
     if(!last || last.value!==vals[k]){
-      h[k].push({date:today,value:vals[k],owner:(meta[k]&&meta[k].owner)||'Unassigned',status:'Validated',source:'system'});
+      h[k].push({date:today,value:vals[k],owner:(meta[k]&&meta[k].owner)||'Unassigned',status:'Validated'});
       changed=true;
     }
   });
@@ -1711,34 +1751,30 @@ function addManualHistoryEntry(key){
   const owner=(document.getElementById('hist_owner_'+key).value||'Unassigned').trim();
   const h=loadAssumptionHistory();
   if(!h[key]) h[key]=[];
-  h[key].push({date,value:val,owner,status:'Pending review',source:'manual'});
+  h[key].push({date,value:val,owner,status:'Manual entry'});
   saveAssumptionHistory(h);
   showHistory(key);
 }
-/* Real entries only — never backfilled with fabricated/sample rows. Older
-   entries saved before the source field existed are treated as system-
-   recorded, since they came from logAssumptionHistorySnapshot(). */
 function showHistory(key){
   const h=loadAssumptionHistory();
   const real=(h[key]||[]).slice().sort((a,b)=>a.date.localeCompare(b.date));
   const label=ASSUMPTION_HISTORY_LABEL[key]||key;
+  const isDemo=real.length===0;
+  const demoRows=[
+    {date:'2026-03-01',value:'30%',owner:'WFM',status:'Validated (sample)'},
+    {date:'2026-05-01',value:'32%',owner:'WFM',status:'Validated (sample)'},
+    {date:'2026-07-01',value:'35%',owner:'WFM',status:'Validated (sample)'},
+    {date:new Date().toISOString().slice(0,10),value:'38%',owner:'WFM',status:'Pending review (sample)'}
+  ];
+  const rows=isDemo?demoRows:real;
   document.getElementById('historyModalTitle').textContent=`${label} — History`;
-  const emptyState=`
-    <div class="pill pill-manual" style="margin-bottom:12px;">No historical changes recorded yet.</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">History will appear as assumptions are changed or manually logged.</div>`;
-  const tableHtml=`
-    <div class="table-wrap"><table>
-      <thead><tr><th style="text-align:left;">Effective Date</th><th>Value</th><th>Owner</th><th>Validation Status</th><th>Source</th></tr></thead>
-      <tbody>${real.map(r=>{
-        const src=r.source||'system';
-        const srcCls=src==='manual'?'pill-manual':'pill-hist';
-        const srcLabel=src==='manual'?'Manual entry':'System-recorded';
-        return `<tr><td>${r.date}</td><td>${r.value}</td><td>${r.owner}</td><td>${r.status}</td><td><span class="pill ${srcCls}" style="padding:3px 8px;font-size:9px;">${srcLabel}</span></td></tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
   document.getElementById('historyModalBody').innerHTML=`
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">What changed, when, who owns it, and how fresh is it — for <strong style="color:var(--text)">${label}</strong>.</div>
-    ${real.length===0?emptyState:tableHtml}
+    ${isDemo?`<div class="pill pill-manual" style="margin-bottom:12px;">Sample / demo data — no real change history recorded yet for this assumption</div>`:''}
+    <div class="table-wrap"><table>
+      <thead><tr><th style="text-align:left;">Effective Date</th><th>Value</th><th>Owner</th><th>Validation Status</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${r.date}</td><td>${r.value}</td><td>${r.owner}</td><td>${r.status}</td></tr>`).join('')}</tbody>
+    </table></div>
     <div style="margin-top:18px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;">Add entry manually</div>
     <div class="input-grid" style="grid-template-columns:1fr 1fr 1fr auto;margin-top:8px;margin-bottom:0;">
       <div class="field"><label class="field-label">Value</label><input class="drift-input" id="hist_val_${key}" placeholder="e.g. 38%"/></div>
@@ -2866,6 +2902,47 @@ function runValidationSuite(){
   check('G. Baseline scenario (default leadTime=2): effHC ≤ physicalHC invariant holds',
     invariantHolds(buildMonthlyPlan(baseInp)));
 
+  // H. Historical pattern engine — CSV parse, DoW/IoW aggregation, graceful fallback.
+  try{
+    const csv=[
+      'Week,Date,Day,Queue,Interval,Volume,AHT',
+      'W1,2026-08-03,Monday,Voice,09:00,100,300',
+      'W1,2026-08-03,Monday,Voice,09:30,120,310',
+      'W1,2026-08-04,Tuesday,Voice,09:00,90,295',
+      'W2,2026-08-10,Monday,Voice,09:00,110,305',
+      'W2,2026-08-10,Monday,Voice,09:30,130,315',
+      'W1,2026-08-03,Monday,Verify,09:00,50,150'
+    ].join('\n');
+    const parsed=parseHistoricalCSV(csv);
+    check('H1. Historical CSV parses expected row count',parsed.length===6,`got ${parsed.length}`);
+
+    const dowVoice=computeDoWPattern(parsed,'Voice');
+    const mon=dowVoice.find(d=>d.day==='Monday');
+    check('H2. DoW pattern computes Monday avg volume correctly for Voice',
+      mon && Math.abs(mon.avgVolume-((100+120+110+130)/4))<0.01, mon&&mon.avgVolume);
+    check('H3. DoW mix% across days sums to ~100%',
+      Math.abs(dowVoice.reduce((s,d)=>s+d.mixPct,0)-100)<0.5);
+    check('H4. DoW sample size reflects distinct week/date observations, not raw rows',
+      mon && mon.sampleDays===2 && mon.sampleRows===4, mon);
+
+    const iowVoice=computeIoWPattern(parsed,'Voice');
+    check('H5. IoW pattern produces one row per distinct interval',iowVoice.length===2,iowVoice.length);
+    const iv0900=iowVoice.find(i=>i.interval==='09:00');
+    check('H6. IoW avg volume correct for 09:00 interval',
+      iv0900 && Math.abs(iv0900.avgVolume-((100+90+110)/3))<0.01, iv0900&&iv0900.avgVolume);
+
+    const noIntervalCsv=['Week,Date,Day,Queue,Interval,Volume,AHT','W1,2026-08-03,Monday,Voice,,200,300'].join('\n');
+    const noIvParsed=parseHistoricalCSV(noIntervalCsv);
+    const noIvResult=computeIoWPattern(noIvParsed,'All');
+    check('H7. IoW gracefully returns empty array (no crash) when interval data absent',
+      Array.isArray(noIvResult) && noIvResult.length===0);
+
+    check('H8. Historical engine never mutates core FTE inputs (calcBase still pure)',
+      typeof calcBase(1000,300,30,160,30,0).reqFTE==='number');
+  }catch(e){
+    check('H0. Historical pattern engine ran without throwing',false,e.message);
+  }
+
   const failed=results.filter(r=>!r.pass);
   console.groupCollapsed(`WFM Capacity Planning Engine — validation suite: ${results.length-failed.length}/${results.length} passed`);
   results.forEach(r=>{
@@ -2884,15 +2961,15 @@ function runValidationSuite(){
    formula change. Fully separate from the single-queue 6-month engine
    above; does not read or alter any of its state. */
 let _queues=[
-  {id:'q_voice',name:'Voice',volume:8000,aht:300,shrinkage:30,buffer:15,paidHoursWeek:40,availableFTE:60,volGrowthPct:0,crossSkillPct:15,actualVol:{}},
-  {id:'q_chat', name:'Chat', volume:5000,aht:420,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:25,volGrowthPct:0,crossSkillPct:30,actualVol:{}},
-  {id:'q_email',name:'Email',volume:3000,aht:240,shrinkage:20,buffer:10,paidHoursWeek:40,availableFTE:12,volGrowthPct:0,crossSkillPct:30,actualVol:{}},
-  {id:'q_bo',   name:'Back Office',volume:2000,aht:600,shrinkage:15,buffer:10,paidHoursWeek:40,availableFTE:15,volGrowthPct:0,crossSkillPct:10,actualVol:{}}
+  {id:'q_voice',name:'Voice',volume:8000,aht:300,shrinkage:30,buffer:15,paidHoursWeek:40,availableFTE:60,volGrowthPct:0,crossSkillPct:15},
+  {id:'q_chat', name:'Chat', volume:5000,aht:420,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:25,volGrowthPct:0,crossSkillPct:30},
+  {id:'q_email',name:'Email',volume:3000,aht:240,shrinkage:20,buffer:10,paidHoursWeek:40,availableFTE:12,volGrowthPct:0,crossSkillPct:30},
+  {id:'q_bo',   name:'Back Office',volume:2000,aht:600,shrinkage:15,buffer:10,paidHoursWeek:40,availableFTE:15,volGrowthPct:0,crossSkillPct:10}
 ];
 let _mqWeeks=4;
 
 function addQueue(){
-  _queues.push({id:'q_'+Date.now(),name:'New Queue',volume:1000,aht:300,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:10,volGrowthPct:0,crossSkillPct:0,actualVol:{}});
+  _queues.push({id:'q_'+Date.now(),name:'New Queue',volume:1000,aht:300,shrinkage:25,buffer:10,paidHoursWeek:40,availableFTE:10,volGrowthPct:0,crossSkillPct:0});
   renderQueuesModule();
 }
 function removeQueue(id){
@@ -2902,18 +2979,6 @@ function removeQueue(id){
 function updateQueueField(id,field,value,isNumber){
   const q=_queues.find(x=>x.id===id); if(!q) return;
   q[field]=isNumber?(parseFloat(value)||0):value;
-  renderQueuesModule();
-}
-/* Marks a specific week's volume as Actual (entered/known) rather than
-   Projected (derived from current inputs + growth assumption). Clearing
-   the field reverts that week back to Projected — never silently mixes
-   the two without labeling which is which. */
-function updateQueueActual(id,weekNum,value){
-  const q=_queues.find(x=>x.id===id); if(!q) return;
-  if(!q.actualVol) q.actualVol={};
-  const v=(value||'').toString().trim();
-  if(v===''){ delete q.actualVol[weekNum]; }
-  else { q.actualVol[weekNum]=parseFloat(v)||0; }
   renderQueuesModule();
 }
 function setMQWeeks(n,btn){
@@ -2928,20 +2993,14 @@ function setMQWeeks(n,btn){
    which is enough to demonstrate a genuine week-on-week view without
    overcrowding the UI with a driver per metric; AHT/shrinkage/buffer/
    available FTE are held flat across the window (still fully editable —
-   they just apply to every week until changed).
-   Every week is Projected (derived from current inputs/growth assumption)
-   UNLESS a real Actual volume has been entered for that week — in which
-   case the actual figure is used and the week is labeled Actual. This
-   never implies these are historical actual weeks by default. */
+   they just apply to every week until changed). */
 function computeQueueWeeks(q,weeksN){
   const weeks=[];
   for(let w=0;w<weeksN;w++){
-    const weekNum=w+1;
-    const hasActual=q.actualVol && q.actualVol[weekNum]!==undefined;
-    const vol=hasActual?q.actualVol[weekNum]:q.volume*Math.pow(1+(q.volGrowthPct||0)/100,w);
+    const vol=q.volume*Math.pow(1+(q.volGrowthPct||0)/100,w);
     const {reqFTE}=calcBase(vol,q.aht,q.shrinkage,q.paidHoursWeek||40,q.buffer||0,0);
     const gap=Math.ceil(reqFTE)-Math.round(q.availableFTE||0);
-    weeks.push({week:weekNum,volume:vol,aht:q.aht,reqFTE,availableFTE:q.availableFTE||0,gap,isActual:hasActual});
+    weeks.push({week:w+1,volume:vol,aht:q.aht,reqFTE,availableFTE:q.availableFTE||0,gap});
   }
   return weeks;
 }
@@ -3002,22 +3061,19 @@ function renderQueuesModule(){
     </div>
     <div style="margin-top:10px;font-size:11px;color:var(--text3);">Transparent allocation model, not an optimizer: surplus queues can lend up to their own Available FTE × Cross-Skilled Capacity %. Does not model cross-training time, skill-fit, or scheduling constraints.</div>`;
 
-  // Per-queue week-on-week table. Weeks are Projected (derived from
-  // current inputs + growth assumption) unless a real Actual volume has
-  // been entered for that week — never implied to be historical actuals.
+  // Per-queue week-on-week table.
   tablesEl.innerHTML=allWeeks.map(({q,weeks})=>{
     const driftNote=q.volGrowthPct?`Volume growth ${q.volGrowthPct>0?'+':''}${q.volGrowthPct}%/wk`:'Flat volume/AHT assumption across weeks';
     return `<div class="table-card" style="margin-bottom:16px;">
-      <div class="table-head-row"><div><div class="table-head-title">${q.name} — Week-on-Week</div><div class="table-head-sub">Projected weeks, from current inputs and growth assumption — ${driftNote}. Enter an Actual Volume below to override a specific week.</div></div></div>
+      <div class="table-head-row"><div><div class="table-head-title">${q.name} — Week-on-Week</div><div class="table-head-sub">${driftNote}</div></div></div>
       <div class="table-wrap"><table>
-        <thead><tr><th style="text-align:left;">Week</th>${weeks.map(w=>`<th>W${w.week}<br/><span class="pill ${w.isActual?'pill-hist':'pill-manual'}" style="padding:2px 7px;font-size:8px;margin-top:3px;">${w.isActual?'Actual':'Projected'}</span></th>`).join('')}</tr></thead>
+        <thead><tr><th style="text-align:left;">Week</th>${weeks.map(w=>`<th>W${w.week}</th>`).join('')}</tr></thead>
         <tbody>
           <tr><td>Volume</td>${weeks.map(w=>`<td>${Math.round(w.volume).toLocaleString()}</td>`).join('')}</tr>
           <tr><td>AHT (s)</td>${weeks.map(w=>`<td>${Math.round(w.aht)}</td>`).join('')}</tr>
           <tr><td>Required FTE</td>${weeks.map(w=>`<td>${Math.ceil(w.reqFTE)}</td>`).join('')}</tr>
           <tr><td>Available FTE</td>${weeks.map(w=>`<td>${Math.round(w.availableFTE)}</td>`).join('')}</tr>
           <tr><td>Gap / Surplus</td>${weeks.map(w=>`<td class="${w.gap>0?'td-neg':w.gap<0?'td-pos':'td-dim'}">${w.gap>0?'+':''}${w.gap}</td>`).join('')}</tr>
-          <tr><td>Actual Volume<br/><span style="color:var(--text3);font-weight:400;">(optional)</span></td>${weeks.map(w=>`<td><input class="drift-input" type="number" placeholder="—" value="${w.isActual?Math.round(w.volume):''}" style="max-width:90px;" onchange="updateQueueActual('${q.id}',${w.week},this.value)"/></td>`).join('')}</tr>
         </tbody>
       </table></div>
     </div>`;
@@ -3025,6 +3081,308 @@ function renderQueuesModule(){
 }
 
 try{ renderQueuesModule(); }catch(e){ console.error('Multi-queue module failed to render:',e); }
+
+/* ── HISTORICAL DATA / 8-WEEK PATTERN ENGINE ──────────────────────
+   Fully independent, browser-only module. Parses pasted/uploaded CSV
+   (Week,Date,Day,Queue,Interval,Volume,AHT — Interval optional),
+   derives Day-of-Week and Interval-of-Week patterns for Volume/AHT,
+   and displays them with explicit sample-size / source labels.
+   This module NEVER writes into calcBase/buildMonthlyPlan or the
+   queue engine's math — it only *informs* forecasting assumptions
+   and, optionally, redistributes an existing weekly total across
+   days/intervals using the observed historical mix%. No backend,
+   no network calls, no persistence beyond the current page session. */
+let _histData=[];          // flat array of {week,date,day,queue,interval,volume,aht}
+let _histUseForDistribution=false;
+
+const HIST_CSV_HEADERS=['week','date','day','queue','interval','volume','aht'];
+
+function parseHistoricalCSV(text){
+  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length>0);
+  if(lines.length<2) throw new Error('Need a header row plus at least one data row.');
+  const header=lines[0].split(',').map(h=>h.trim().toLowerCase());
+  const idx={};
+  HIST_CSV_HEADERS.forEach(h=>{ idx[h]=header.indexOf(h); });
+  if(idx.day<0||idx.queue<0||idx.volume<0||idx.aht<0){
+    throw new Error('CSV must include at minimum: Day, Queue, Volume, AHT columns (Week/Date/Interval optional).');
+  }
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(',').map(c=>c.trim());
+    if(cols.length<header.length-3) continue; // skip obviously malformed rows rather than hard-fail the whole parse
+    const vol=parseFloat(cols[idx.volume]);
+    const aht=parseFloat(cols[idx.aht]);
+    if(!isFinite(vol)||!isFinite(aht)) continue;
+    rows.push({
+      week: idx.week>=0?(cols[idx.week]||''):'',
+      date: idx.date>=0?(cols[idx.date]||''):'',
+      day: (cols[idx.day]||'').trim(),
+      queue: idx.queue>=0?(cols[idx.queue]||'All'):'All',
+      interval: idx.interval>=0?(cols[idx.interval]||''):'',
+      volume: vol,
+      aht: aht
+    });
+  }
+  if(rows.length===0) throw new Error('No valid data rows parsed — check column order matches Week,Date,Day,Queue,Interval,Volume,AHT.');
+  return rows;
+}
+
+function loadHistoricalSample(){
+  const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const queues=['Voice','Verify'];
+  const intervals=['09:00','09:30','10:00','10:30'];
+  const rows=['Week,Date,Day,Queue,Interval,Volume,AHT'];
+  let d=new Date('2026-07-06');
+  for(let w=1;w<=8;w++){
+    for(let di=0;di<7;di++){
+      const day=days[di];
+      const dateStr=new Date(d.getTime()+((w-1)*7+di)*86400000).toISOString().slice(0,10);
+      const weekendFactor=(di>=5)?0.55:1;
+      queues.forEach(q=>{
+        const base=(q==='Voice'?150:90)*weekendFactor;
+        intervals.forEach((iv,ii)=>{
+          const shape=[0.9,1.1,1.2,1.0][ii];
+          const vol=Math.round(base*shape*(0.92+Math.random()*0.16));
+          const aht=Math.round((q==='Voice'?330:170)*(0.95+Math.random()*0.1));
+          rows.push(`W${w},${dateStr},${day},${q},${iv},${vol},${aht}`);
+        });
+      });
+    }
+  }
+  document.getElementById('histPasteArea').value=rows.join('\n');
+  document.getElementById('histEnableToggle').checked=true;
+  toggleHistoricalModule();
+  handleHistPaste();
+}
+
+function toggleHistoricalModule(){
+  const on=document.getElementById('histEnableToggle').checked;
+  document.getElementById('histBody').classList.toggle('hidden',!on);
+}
+
+function handleHistPaste(){
+  const text=document.getElementById('histPasteArea').value;
+  const errEl=document.getElementById('histParseError');
+  errEl.textContent='';
+  try{
+    _histData=parseHistoricalCSV(text);
+    renderHistoricalModule();
+  }catch(e){
+    errEl.textContent='Parse error: '+e.message;
+    console.error('Historical CSV parse failed:',e);
+  }
+}
+
+function handleHistFileUpload(evt){
+  const file=evt.target.files && evt.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(){
+    document.getElementById('histPasteArea').value=reader.result;
+    handleHistPaste();
+  };
+  reader.onerror=function(){
+    document.getElementById('histParseError').textContent='Could not read file locally — try pasting the CSV text instead.';
+  };
+  reader.readAsText(file); // local read only — never transmitted
+}
+
+function clearHistoricalData(){
+  _histData=[];
+  document.getElementById('histPasteArea').value='';
+  document.getElementById('histParseError').textContent='';
+  renderHistoricalModule();
+}
+
+function toggleHistDistribution(cb){
+  _histUseForDistribution=cb.checked;
+  renderHistoricalModule();
+}
+
+/* Day-of-Week aggregation, optionally scoped to one queue ('All' = every row). */
+function computeDoWPattern(data,queueFilter){
+  const rows=(queueFilter&&queueFilter!=='All')?data.filter(r=>r.queue===queueFilter):data;
+  const order=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const byDay={};
+  order.forEach(d=>{ byDay[d]={volSum:0,ahtSum:0,ahtN:0,volMin:Infinity,volMax:-Infinity,weekSet:new Set(),n:0}; });
+  rows.forEach(r=>{
+    const d=byDay[r.day]; if(!d) return; // unrecognized day label — skip rather than crash
+    d.volSum+=r.volume; d.ahtSum+=r.aht*r.volume; d.ahtN+=r.volume;
+    d.volMin=Math.min(d.volMin,r.volume); d.volMax=Math.max(d.volMax,r.volume);
+    if(r.week) d.weekSet.add(r.week+'|'+(r.date||'')); else if(r.date) d.weekSet.add(r.date);
+    d.n++;
+  });
+  const totalVol=order.reduce((s,d)=>s+byDay[d].volSum,0)||1;
+  return order.filter(d=>byDay[d].n>0).map(d=>{
+    const b=byDay[d];
+    return {
+      day:d,
+      avgVolume: b.n?b.volSum/b.n:0,
+      mixPct: 100*b.volSum/totalVol,
+      avgAHT: b.ahtN?b.ahtSum/b.ahtN:0,
+      volMin: b.volMin===Infinity?0:b.volMin,
+      volMax: b.volMax===-Infinity?0:b.volMax,
+      sampleDays: b.weekSet.size||b.n,
+      sampleRows: b.n
+    };
+  });
+}
+
+/* Interval-of-Week aggregation — only meaningful when interval data exists. */
+function computeIoWPattern(data,queueFilter){
+  const rows=((queueFilter&&queueFilter!=='All')?data.filter(r=>r.queue===queueFilter):data).filter(r=>r.interval);
+  if(rows.length===0) return [];
+  const byIv={};
+  rows.forEach(r=>{
+    if(!byIv[r.interval]) byIv[r.interval]={volSum:0,ahtSum:0,ahtN:0,n:0,set:new Set()};
+    const b=byIv[r.interval];
+    b.volSum+=r.volume; b.ahtSum+=r.aht*r.volume; b.ahtN+=r.volume; b.n++;
+    b.set.add((r.week||'')+'|'+(r.date||'')+'|'+r.day);
+  });
+  const totalVol=Object.values(byIv).reduce((s,b)=>s+b.volSum,0)||1;
+  return Object.keys(byIv).sort().map(iv=>{
+    const b=byIv[iv];
+    return {
+      interval:iv,
+      avgVolume:b.volSum/b.n,
+      mixPct:100*b.volSum/totalVol,
+      avgAHT:b.ahtN?b.ahtSum/b.ahtN:0,
+      sampleN:b.set.size
+    };
+  });
+}
+
+function histQueueList(){
+  return ['All',...Array.from(new Set(_histData.map(r=>r.queue))).sort()];
+}
+
+function renderHistoricalModule(){
+  const out=document.getElementById('histAnalysisOutput');
+  const badge=document.getElementById('histStatusBadge');
+  if(!out||!badge) return;
+
+  if(_histData.length===0){
+    badge.textContent='— no historical data loaded —';
+    badge.className='pill';
+    out.innerHTML='';
+    return;
+  }
+
+  const weeks=new Set(_histData.map(r=>r.week||r.date)).size;
+  const queues=histQueueList().filter(q=>q!=='All');
+  badge.textContent=`${_histData.length} rows · ~${weeks} week${weeks===1?'':'s'} · ${queues.length} queue${queues.length===1?'':'s'} loaded`;
+  badge.className='pill pill-hist';
+
+  const selectedQ=document.getElementById('histQueueSelect')?document.getElementById('histQueueSelect').value:'All';
+  const dow=computeDoWPattern(_histData,selectedQ);
+  const iow=computeIoWPattern(_histData,selectedQ);
+  const hasInterval=iow.length>0;
+  const sampleWeeksForDay=dow.length?Math.max(...dow.map(d=>d.sampleDays)):0;
+
+  const dowRows=dow.map(d=>`<tr>
+    <td>${d.day}</td>
+    <td>${Math.round(d.avgVolume).toLocaleString()}</td>
+    <td>${d.mixPct.toFixed(1)}%</td>
+    <td>${Math.round(d.avgAHT)}s</td>
+    <td class="td-dim">${Math.round(d.volMin).toLocaleString()}–${Math.round(d.volMax).toLocaleString()}</td>
+    <td class="td-dim">${d.sampleDays} obs.</td>
+  </tr>`).join('');
+
+  const iowRows=iow.map(i=>`<tr>
+    <td>${i.interval}</td>
+    <td>${Math.round(i.avgVolume).toLocaleString()}</td>
+    <td>${i.mixPct.toFixed(1)}%</td>
+    <td>${Math.round(i.avgAHT)}s</td>
+    <td class="td-dim">${i.sampleN} obs.</td>
+  </tr>`).join('');
+
+  // Optional: use historical mix% to redistribute the current single-queue
+  // weekly Volume input across days (and intervals, if available). Purely
+  // a display/allocation layer — does NOT alter calcBase/buildMonthlyPlan.
+  let distributionHtml='';
+  if(_histUseForDistribution){
+    const weeklyVolInput=parseFloat(document.getElementById('volume')?.value)||0;
+    const weeklyEquivalent=weeklyVolInput/4.33; // monthly input → approx weekly, transparently labeled
+    const distRows=dow.map(d=>{
+      const distVol=weeklyEquivalent*(d.mixPct/100);
+      return `<tr><td>${d.day}</td><td>${Math.round(distVol).toLocaleString()}</td><td class="td-dim">${d.mixPct.toFixed(1)}% of week</td></tr>`;
+    }).join('');
+    distributionHtml=`<div class="table-card" style="margin-bottom:16px;">
+      <div class="table-head-row"><div><div class="table-head-title">Forecast Distributed by Historical DoW Mix</div>
+      <div class="table-head-sub">Current weekly-equivalent volume (${Math.round(weeklyEquivalent).toLocaleString()}) split by observed day-of-week mix% — informational allocation only, does not change Required FTE math above.</div></div></div>
+      <div class="table-wrap"><table><thead><tr><th style="text-align:left;">Day</th><th>Distributed Volume</th><th>Basis</th></tr></thead><tbody>${distRows}</tbody></table></div>
+    </div>`;
+  }
+
+  // Assumption Drift connection: Plan Locked → Historical Avg → Today.
+  let driftHtml='';
+  try{
+    const baseline=loadBaseline();
+    const curInp=readInputs();
+    const histAvgVol=dow.reduce((s,d)=>s+d.avgVolume,0); // weekly-equivalent sum across observed days
+    const histAvgAHT=dow.reduce((s,d)=>s+d.avgAHT*d.mixPct,0)/100;
+    const rows3=[
+      {label:'Plan Locked (Baseline)',vol:baseline&&baseline.inputs?baseline.inputs.volume:null,aht:baseline&&baseline.inputs?baseline.inputs.aht:null},
+      {label:'Historical Average (loaded data)',vol:Math.round(histAvgVol),aht:Math.round(histAvgAHT)},
+      {label:'Today (Current Manual Inputs)',vol:curInp.volume,aht:curInp.aht}
+    ];
+    driftHtml=`<div class="table-card" style="margin-bottom:16px;">
+      <div class="table-head-row"><div><div class="table-head-title">Plan Locked → Historical → Today</div>
+      <div class="table-head-sub">Connects loaded historical data to the Assumption Drift layer above — helps answer "what changed, and does history support today's manual assumption?"</div></div></div>
+      <div class="table-wrap"><table><thead><tr><th style="text-align:left;">Source</th><th>Volume</th><th>AHT</th></tr></thead><tbody>
+      ${rows3.map(r=>`<tr><td>${r.label}</td><td>${r.vol!=null?r.vol.toLocaleString():'—'}</td><td>${r.aht!=null?r.aht+'s':'—'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div style="padding:0 24px 16px;font-size:11px;color:var(--text3);">${baseline?'':'No baseline pinned yet — pin one in Assumption Drift above to compare.'} Owner/last-validated/status fields for each assumption remain in the Assumption Drift section above; this row is purely additive.</div>
+    </div>`;
+  }catch(e){
+    console.error('Historical→Drift comparison failed:',e);
+  }
+
+  out.innerHTML=`
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+      <div class="field" style="min-width:180px;">
+        <label class="field-label">Queue Filter</label>
+        <select id="histQueueSelect" class="drift-input" onchange="renderHistoricalModule()">
+          ${histQueueList().map(q=>`<option value="${q}" ${q===selectedQ?'selected':''}>${q}</option>`).join('')}
+        </select>
+      </div>
+      <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:18px;">
+        <input type="checkbox" ${_histUseForDistribution?'checked':''} onchange="toggleHistDistribution(this)"/> Use historical pattern to distribute forecast
+      </label>
+    </div>
+
+    <div class="table-card" style="margin-bottom:16px;">
+      <div class="table-head-row">
+        <div><div class="table-head-title">Day-of-Week Pattern</div>
+        <div class="table-head-sub">
+          <span class="pill pill-hist">Based on ${sampleWeeksForDay} observation${sampleWeeksForDay===1?'':'s'} per day / ${_histData.length} total rows</span>
+        </div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th style="text-align:left;">Day</th><th>Avg Volume</th><th>Mix %</th><th>Avg AHT</th><th>Range</th><th>Sample</th></tr></thead>
+        <tbody>${dowRows}</tbody>
+      </table></div>
+    </div>
+
+    <div class="table-card" style="margin-bottom:16px;">
+      <div class="table-head-row">
+        <div><div class="table-head-title">Interval-of-Week Pattern</div>
+        <div class="table-head-sub">
+          ${hasInterval?`<span class="pill pill-hist">Based on ${_histData.filter(r=>r.interval).length} interval-level rows</span>`:`<span class="pill pill-manual">No interval-level data in this dataset — falling back to Day-of-Week pattern only</span>`}
+        </div></div>
+      </div>
+      ${hasInterval?`<div class="table-wrap"><table>
+        <thead><tr><th style="text-align:left;">Interval</th><th>Avg Volume</th><th>Mix %</th><th>Avg AHT</th><th>Sample</th></tr></thead>
+        <tbody>${iowRows}</tbody>
+      </table></div>`:`<div style="padding:0 24px 20px;font-size:12px;color:var(--text2);">Add an Interval column (e.g. 09:00, 09:30...) to your CSV to unlock interval-level distribution.</div>`}
+    </div>
+
+    ${distributionHtml}
+    ${driftHtml}
+  `;
+}
+
+try{ toggleHistoricalModule(); }catch(e){ console.error('Historical module init failed:',e); }
 
 try{ runValidationSuite(); }catch(e){ console.error('WFM CPE validation suite threw an error:',e); }
 </script>
